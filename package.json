@@ -1,0 +1,70 @@
+{
+  "name": "erp",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "pnpm db:generate",
+    "db:generate": "prisma generate",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "dev": "pnpm db:up && pnpm --filter \"./packages/*\" --filter @erp/api build && pnpm --parallel --filter \"./packages/*\" --filter @erp/api --filter @erp/web dev",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm build:packages && pnpm -r --workspace-concurrency=1 typecheck && tsc -p e2e/tsconfig.json --noEmit && tsc -p prisma/tsconfig.json",
+    "test": "pnpm build:packages && pnpm db:migrate:test && pnpm -r --workspace-concurrency=1 test",
+    "test:coverage": "pnpm build:packages && pnpm db:migrate:test && pnpm -r --workspace-concurrency=1 test:coverage",
+    "test:e2e": "pnpm db:migrate:test && pnpm db:seed:test && playwright test",
+    "build": "pnpm -r --workspace-concurrency=1 build",
+    "build:packages": "pnpm --filter \"./packages/*\" build",
+    "db:migrate": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate deploy",
+    "db:reset": "node --env-file-if-exists=.env node_modules/prisma/build/index.js migrate reset --force",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
+    "db:provision": "node --env-file-if-exists=.env scripts/db.mjs provision",
+    "db:setup": "pnpm db:migrate && pnpm db:provision && pnpm db:seed",
+    "db:migrate:test": "node --env-file-if-exists=.env scripts/db.mjs prepare-test",
+    "db:drift": "node --env-file-if-exists=.env scripts/check-schema-drift.mjs",
+    "dev:worker": "pnpm --filter @erp/worker dev",
+    "db:seed:test": "node --env-file-if-exists=.env scripts/db.mjs seed-test",
+    "demo:seed": "node --env-file-if-exists=.env scripts/demo/seed-demo.mjs",
+    "demo:finish": "node --env-file-if-exists=.env scripts/demo/spread-dates.mjs --yes && cd apps/worker && tsx --env-file-if-exists=../../.env ../../scripts/demo/run-reminders.ts",
+    "demo:check": "node --env-file-if-exists=.env scripts/demo/check-demo.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4",
+    "@erp/contracts": "workspace:^",
+    "@erp/permissions": "workspace:^",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.55.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "argon2": "^0.45.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.0.0",
+    "pg": "^8.23.1",
+    "prettier": "^3.3.0",
+    "prisma": "7.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "zod": "^4.6.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "@swc/core",
+      "esbuild",
+      "prisma"
+    ]
+  }
+}

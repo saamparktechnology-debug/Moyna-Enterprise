@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+prisma/generated
+playwright-report
+test-results
+docs/IMPLEMENTATION_PROMPT.md

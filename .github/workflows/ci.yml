@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp
+          POSTGRES_PASSWORD: erp
+          POSTGRES_DB: erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp -d erp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      SESSION_SECRET: ci-only-session-secret-0123456789-abcdefgh
+      DATABASE_URL: postgresql://erp_app:erp_app@localhost:5432/erp_test
+      MIGRATION_DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_test
+      WORKER_DATABASE_URL: postgresql://erp_worker:erp_worker@localhost:5432/erp_test
+      DATABASE_URL_TEST: postgresql://erp:erp@localhost:5432/erp_test
+      SEED_SUPER_ADMIN_EMAIL: admin@example.com
+      SEED_SUPER_ADMIN_USERNAME: superadmin
+      SEED_SUPER_ADMIN_PASSWORD: ci-only-super-admin-passphrase
+      SEED_BRANCH_CODE: HQ
+      SEED_BRANCH_NAME: Head Office
+      SEED_BRANCH_STATE_CODE: '19'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm db:migrate:test
+      - run: pnpm db:drift
+        env:
+          MIGRATION_DATABASE_URL: postgresql://erp:erp@localhost:5432/erp_test
+      - run: pnpm test:coverage
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore

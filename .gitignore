@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.env
+*.log
+playwright-report
+test-results
+prisma/generated
+.vite
+kyc

@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "types": ["node"],
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  },
+  "include": ["seed.ts", "seed"]
+}

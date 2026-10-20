@@ -1,0 +1,1844 @@
+// Generated from the approved schema (48 tables) plus the masters and document_sequences added in Stage 2.
+// Edit with care: raw SQL migrations add checks, partial indexes, row-level security and grants that Prisma cannot express.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleTier {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum StockState {
+  AVAILABLE
+  RESERVED
+  IN_TRANSIT
+  DAMAGED
+  RETURNED
+  QUARANTINE
+}
+
+enum SerialUnitState {
+  AVAILABLE
+  RESERVED
+  IN_TRANSIT
+  DAMAGED
+  RETURNED
+  QUARANTINE
+  SOLD
+  SCRAPPED
+}
+
+enum MovementType {
+  OPENING_BALANCE
+  PURCHASE_RECEIPT
+  PURCHASE_RETURN
+  SALE
+  SALE_RETURN
+  TRANSFER_DISPATCH
+  TRANSFER_RECEIPT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  STATE_CHANGE
+  EXCHANGE_IN
+  EXCHANGE_OUT
+  WRITE_OFF
+}
+
+enum StockAdjustmentKind {
+  IN
+  OUT
+  WRITE_OFF
+  STATE_CHANGE
+}
+enum PurchaseOrderStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum TransferStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DISPATCHED
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+enum DiscrepancyType {
+  SHORT
+  EXCESS
+  WRONG_ITEM
+  DAMAGED
+  MISMATCHED
+}
+
+enum DiscrepancyStatus {
+  OPEN
+  RESOLVED
+}
+
+enum DiscrepancyResolution {
+  ACCEPT
+  RETURN
+  CLAIM
+  WRITE_OFF
+}
+
+enum KycStatus {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  QUOTED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum CommissionRuleType {
+  FIXED
+  PERCENT
+}
+
+enum CommissionStatus {
+  PAYABLE
+  PAID
+  REVERSED
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  EXPIRED
+  CONVERTED
+  CANCELLED
+}
+
+enum InvoiceType {
+  GST
+  NON_GST
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum DocumentType {
+  PURCHASE_ORDER
+  GOODS_RECEIPT
+  TRANSFER
+  QUOTATION
+  INVOICE_GST
+  INVOICE_NON_GST
+  CREDIT_NOTE
+  PAYMENT_RECEIPT
+  PURCHASE_RETURN
+  EXCHANGE
+  REFUND
+}
+
+model User {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  username String @unique @map("username")
+  email String @unique @map("email")
+  fullName String @map("full_name")
+  passwordHash String @map("password_hash")
+  status UserStatus @default(ACTIVE) @map("status")
+  lastLoginAt DateTime? @map("last_login_at")
+  failedLoginCount Int @default(0) @map("failed_login_count")
+  lockedUntil DateTime? @map("locked_until")
+  passwordChangedAt DateTime? @map("password_changed_at")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  appSettingsUpdated AppSetting[] @relation("AppSetting_updatedByUser")
+  sessions Session[] @relation("Session_user")
+  userRoles UserRole[] @relation("UserRole_user")
+  userBranches UserBranch[] @relation("UserBranch_user")
+  goodsReceipts GoodsReceipt[] @relation("GoodsReceipt_receivedByUser")
+  transferEvents TransferEvent[] @relation("TransferEvent_user")
+  leads Lead[] @relation("Lead_assignedToUser")
+  decidedExchanges Exchange[] @relation("Exchange_decider")
+  decidedLeave LeaveRequest[] @relation("LeaveRequest_decider")
+  correctedAttendance Attendance[] @relation("Attendance_corrector")
+  finalizedPayroll PayrollRecord[] @relation("PayrollRecord_finalizer")
+  staff Staff? @relation("Staff_user")
+  auditLogs AuditLog[] @relation("AuditLog_actor")
+  notifications Notification[] @relation("Notification_user")
+  approvals Approval[] @relation("Approval_requester")
+  approvalsApprover Approval[] @relation("Approval_approver")
+  stockAdjustmentsRequested StockAdjustment[] @relation("StockAdjustment_requester")
+  stockAdjustmentsApproved StockAdjustment[] @relation("StockAdjustment_approver")
+  kycDocumentsReviewed KycDocument[] @relation("KycDocument_reviewer")
+  invoicesCancelled Invoice[] @relation("Invoice_canceller")
+  creditNotesDecided CreditNote[] @relation("CreditNote_decider")
+  @@map("users")
+}
+
+model Branch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  code String @unique @map("code")
+  name String @map("name")
+  gstin String? @unique @map("gstin")
+  stateCode String @map("state_code")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  state State @relation("Branch_state", fields: [stateCode], references: [code])
+  userBranches UserBranch[] @relation("UserBranch_branch")
+  serialUnits SerialUnit[] @relation("SerialUnit_branch")
+  stockLedgers StockLedger[] @relation("StockLedger_branch")
+  stockBalances StockBalance[] @relation("StockBalance_branch")
+  stockAdjustments StockAdjustment[] @relation("StockAdjustment_branch")
+  purchaseReturnLines PurchaseReturnLine[] @relation("PurchaseReturnLine_branch")
+  purchaseReturns PurchaseReturn[] @relation("PurchaseReturn_branch")
+  purchaseOrders PurchaseOrder[] @relation("PurchaseOrder_branch")
+  poLines PoLine[] @relation("PoLine_branch")
+  supplierPayments SupplierPayment[] @relation("SupplierPayment_branch")
+  goodsReceipts GoodsReceipt[] @relation("GoodsReceipt_branch")
+  receiptLines ReceiptLine[] @relation("ReceiptLine_branch")
+  transfers Transfer[] @relation("Transfer_fromBranch")
+  transfersToBranch Transfer[] @relation("Transfer_toBranch")
+  transferLines TransferLine[] @relation("TransferLine_fromBranch")
+  transferLinesToBranch TransferLine[] @relation("TransferLine_toBranch")
+  discrepancies Discrepancy[] @relation("Discrepancy_branch")
+  transferEvents TransferEvent[] @relation("TransferEvent_fromBranch")
+  transferEventsToBranch TransferEvent[] @relation("TransferEvent_toBranch")
+  leads Lead[] @relation("Lead_branch")
+  leadFollowups LeadFollowup[] @relation("LeadFollowup_branch")
+  commissions Commission[] @relation("Commission_branch")
+  quotations Quotation[] @relation("Quotation_branch")
+  invoices Invoice[] @relation("Invoice_branch")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_branch")
+  exchanges Exchange[] @relation("Exchange_branch")
+  creditNotes CreditNote[] @relation("CreditNote_branch")
+  creditNoteLines CreditNoteLine[] @relation("CreditNoteLine_branch")
+  paymentAllocations PaymentAllocation[] @relation("PaymentAllocation_branch")
+  payments Payment[] @relation("Payment_branch")
+  paymentReversals PaymentReversal[] @relation("PaymentReversal_branch")
+  leadNotes LeadNote[] @relation("LeadNote_branch")
+  commissionAdjustments CommissionAdjustment[] @relation("CommissionAdjustment_branch")
+  quotationLines QuotationLine[] @relation("QuotationLine_branch")
+  quotationBuildUpdates QuotationBuildUpdate[] @relation("QuotationBuildUpdate_branch")
+  customerRefunds CustomerRefund[] @relation("CustomerRefund_branch")
+  staffs Staff[] @relation("Staff_branch")
+  attendances Attendance[] @relation("Attendance_branch")
+  leaveRequests LeaveRequest[] @relation("LeaveRequest_branch")
+  payrollRecords PayrollRecord[] @relation("PayrollRecord_branch")
+  auditLogs AuditLog[] @relation("AuditLog_branch")
+  notifications Notification[] @relation("Notification_branch")
+  outboxEvents OutboxEvent[] @relation("OutboxEvent_branch")
+  approvals Approval[] @relation("Approval_branch")
+  attachments Attachment[] @relation("Attachment_branch")
+  documentSequences DocumentSequence[] @relation("DocumentSequence_branch")
+  @@index([stateCode])
+  @@map("branches")
+}
+
+model Session {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  ipAddress String? @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+  tokenHash String @unique @map("token_hash")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  userAgent String? @map("user_agent")
+  revokedAt DateTime? @map("revoked_at")
+  user User @relation("Session_user", fields: [userId], references: [id])
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Role {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  name String @unique @map("name")
+  description String? @map("description")
+  isSystem Boolean @default(false) @map("is_system")
+  tier RoleTier @map("tier")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  rolePermissions RolePermission[] @relation("RolePermission_role")
+  userRoles UserRole[] @relation("UserRole_role")
+  @@map("roles")
+}
+
+model Permission {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  code String @unique @map("code")
+  description String? @map("description")
+  module String @map("module")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  rolePermissions RolePermission[] @relation("RolePermission_permission")
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  role Role @relation("RolePermission_role", fields: [roleId], references: [id])
+  permission Permission @relation("RolePermission_permission", fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  user User @relation("UserRole_user", fields: [userId], references: [id])
+  role Role @relation("UserRole_role", fields: [roleId], references: [id])
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model UserBranch {
+  userId String @map("user_id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  user User @relation("UserBranch_user", fields: [userId], references: [id])
+  branch Branch @relation("UserBranch_branch", fields: [branchId], references: [id])
+  @@id([userId, branchId])
+  @@index([branchId])
+  @@map("user_branches")
+}
+
+model ItemCategory {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  name String @map("name")
+  parentId String? @map("parent_id") @db.Uuid
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  parent ItemCategory? @relation("ItemCategory_parent", fields: [parentId], references: [id])
+  itemCategories ItemCategory[] @relation("ItemCategory_parent")
+  items Item[] @relation("Item_category")
+  @@unique([parentId, name])
+  @@map("item_categories")
+}
+
+model Item {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  itemCode String @unique @map("item_code")
+  name String @map("name")
+  categoryId String @map("category_id") @db.Uuid
+  hsnCode String? @map("hsn_code")
+  taxRate Decimal? @map("tax_rate") @db.Decimal(5, 2)
+  unitCode String @map("unit_code")
+  reorderLevel Int @default(0) @map("reorder_level")
+  isSerialized Boolean @default(false) @map("is_serialized")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  category ItemCategory @relation("Item_category", fields: [categoryId], references: [id])
+  hsn HsnCode? @relation("Item_hsn", fields: [hsnCode], references: [code])
+  gstSlab GstRate? @relation("Item_gstSlab", fields: [taxRate], references: [rate])
+  unit UnitOfMeasure @relation("Item_unit", fields: [unitCode], references: [code])
+  itemBarcodes ItemBarcode[] @relation("ItemBarcode_item")
+  serialUnits SerialUnit[] @relation("SerialUnit_item")
+  stockLedgers StockLedger[] @relation("StockLedger_item")
+  stockBalances StockBalance[] @relation("StockBalance_item")
+  stockAdjustments StockAdjustment[] @relation("StockAdjustment_item")
+  purchaseReturnLines PurchaseReturnLine[] @relation("PurchaseReturnLine_item")
+  poLines PoLine[] @relation("PoLine_item")
+  receiptLines ReceiptLine[] @relation("ReceiptLine_item")
+  transferLines TransferLine[] @relation("TransferLine_item")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_item")
+  quotationLines QuotationLine[] @relation("QuotationLine_item")
+  creditNoteLines CreditNoteLine[] @relation("CreditNoteLine_item")
+  @@index([categoryId])
+  @@index([hsnCode])
+  @@index([taxRate])
+  @@index([unitCode])
+  @@map("items")
+}
+
+model ItemBarcode {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  barcode String @unique @map("barcode")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  item Item @relation("ItemBarcode_item", fields: [itemId], references: [id])
+  @@index([itemId])
+  @@map("item_barcodes")
+}
+
+model SerialUnit {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialNo String @unique @map("serial_no")
+  state SerialUnitState @default(AVAILABLE) @map("state")
+  chassisNo String? @unique @map("chassis_no")
+  motorNo String? @unique @map("motor_no")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("SerialUnit_branch", fields: [branchId], references: [id])
+  item Item @relation("SerialUnit_item", fields: [itemId], references: [id])
+  stockLedgers StockLedger[] @relation("StockLedger_serialUnit")
+  stockAdjustments StockAdjustment[] @relation("StockAdjustment_serialUnit")
+  battery Battery? @relation("Battery_serialUnit")
+  installedBatteries Battery[] @relation("Battery_installedIn")
+  purchaseReturnLines PurchaseReturnLine[] @relation("PurchaseReturnLine_serialUnit")
+  transferLines TransferLine[] @relation("TransferLine_serialUnit")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_serialUnit")
+  exchanges Exchange[] @relation("Exchange_oldSerialUnit")
+  exchangesNewSerialUnit Exchange[] @relation("Exchange_newSerialUnit")
+  creditNoteLines CreditNoteLine[] @relation("CreditNoteLine_serialUnit")
+  quotationLines QuotationLine[] @relation("QuotationLine_serialUnit")
+  @@index([itemId, branchId, state])
+  @@index([branchId])
+  @@map("serial_units")
+}
+
+model StockLedger {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  state StockState @map("state")
+  qtyDelta Int @map("qty_delta")
+  movementType MovementType @map("movement_type")
+  sourceDocId String? @map("source_doc_id") @db.Uuid
+  sourceDocType String? @map("source_doc_type")
+  createdBy String? @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  branch Branch @relation("StockLedger_branch", fields: [branchId], references: [id])
+  item Item @relation("StockLedger_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("StockLedger_serialUnit", fields: [serialUnitId], references: [id])
+  @@index([branchId, itemId, createdAt])
+  @@index([sourceDocId])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@map("stock_ledger")
+}
+
+model StockBalance {
+  branchId String @map("branch_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  state StockState @map("state")
+  quantity Int @default(0) @map("quantity")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("StockBalance_branch", fields: [branchId], references: [id])
+  item Item @relation("StockBalance_item", fields: [itemId], references: [id])
+  @@id([branchId, itemId, state])
+  @@index([itemId])
+  @@map("stock_balances")
+}
+
+model StockAdjustment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  serialNo String? @map("serial_no")
+  chassisNo String? @map("chassis_no")
+  manufacturedOn DateTime? @map("manufactured_on") @db.Date
+  expiryOn DateTime? @map("expiry_on") @db.Date
+  warrantyMonths Int? @map("warranty_months")
+  kind StockAdjustmentKind @map("kind")
+  state StockState @map("state")
+  toState StockState? @map("to_state")
+  qty Int @map("qty")
+  reason String @map("reason")
+  status ApprovalStatus @default(PENDING) @map("status")
+  requestedBy String @map("requested_by") @db.Uuid
+  approvedBy String? @map("approved_by") @db.Uuid
+  decidedAt DateTime? @map("decided_at")
+  decisionNote String? @map("decision_note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("StockAdjustment_branch", fields: [branchId], references: [id])
+  item Item @relation("StockAdjustment_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("StockAdjustment_serialUnit", fields: [serialUnitId], references: [id])
+  requester User @relation("StockAdjustment_requester", fields: [requestedBy], references: [id])
+  approver User? @relation("StockAdjustment_approver", fields: [approvedBy], references: [id])
+  @@index([branchId, status])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@index([requestedBy])
+  @@index([approvedBy])
+  @@map("stock_adjustments")
+}
+
+model Battery {
+  serialUnitId String @id @map("serial_unit_id") @db.Uuid
+  manufacturedOn DateTime? @map("manufactured_on") @db.Date
+  expiryOn DateTime? @map("expiry_on") @db.Date
+  warrantyMonths Int? @map("warranty_months")
+  warrantyEnd DateTime? @map("warranty_end") @db.Date
+  installedInSerialUnitId String? @map("installed_in_serial_unit_id") @db.Uuid
+  installedOn DateTime? @map("installed_on") @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  serialUnit SerialUnit @relation("Battery_serialUnit", fields: [serialUnitId], references: [id])
+  installedIn SerialUnit? @relation("Battery_installedIn", fields: [installedInSerialUnitId], references: [id])
+  @@index([expiryOn])
+  @@index([installedInSerialUnitId])
+  @@map("batteries")
+}
+
+model Supplier {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  name String @map("name")
+  gstin String? @map("gstin")
+  phone String? @map("phone")
+  stateCode String? @map("state_code")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  state State? @relation("Supplier_state", fields: [stateCode], references: [code])
+  purchaseOrders PurchaseOrder[] @relation("PurchaseOrder_supplier")
+  supplierPayments SupplierPayment[] @relation("SupplierPayment_supplier")
+  purchaseReturns PurchaseReturn[] @relation("PurchaseReturn_supplier")
+  @@index([stateCode])
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  poNo String @map("po_no")
+  supplierId String @map("supplier_id") @db.Uuid
+  status PurchaseOrderStatus @default(DRAFT) @map("status")
+  orderDate DateTime @map("order_date") @db.Date
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("PurchaseOrder_branch", fields: [branchId], references: [id])
+  supplier Supplier @relation("PurchaseOrder_supplier", fields: [supplierId], references: [id])
+  poLines PoLine[] @relation("PoLine_po")
+  goodsReceipts GoodsReceipt[] @relation("GoodsReceipt_po")
+  purchaseReturns PurchaseReturn[] @relation("PurchaseReturn_po")
+  @@unique([branchId, poNo])
+  @@index([branchId, createdAt])
+  @@index([supplierId])
+  @@index([branchId, orderDate])
+  @@map("purchase_orders")
+}
+
+model PoLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  poId String @map("po_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  qtyOrdered Int @map("qty_ordered")
+  unitCost Decimal @map("unit_cost") @db.Decimal(14, 2)
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("PoLine_branch", fields: [branchId], references: [id])
+  po PurchaseOrder @relation("PoLine_po", fields: [poId], references: [id])
+  item Item @relation("PoLine_item", fields: [itemId], references: [id])
+  receiptLines ReceiptLine[] @relation("ReceiptLine_poLine")
+  purchaseReturnLines PurchaseReturnLine[] @relation("PurchaseReturnLine_poLine")
+  @@unique([poId, itemId])
+  @@index([branchId])
+  @@index([poId])
+  @@index([itemId])
+  @@map("po_lines")
+}
+
+model SupplierPayment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  supplierId String @map("supplier_id") @db.Uuid
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  paidOn DateTime @map("paid_on") @db.Date
+  mode String @map("mode")
+  reference String? @map("reference")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("SupplierPayment_branch", fields: [branchId], references: [id])
+  supplier Supplier @relation("SupplierPayment_supplier", fields: [supplierId], references: [id])
+  paymentMode PaymentMode @relation("SupplierPayment_paymentMode", fields: [mode], references: [code])
+  @@index([branchId, createdAt])
+  @@index([supplierId])
+  @@index([mode])
+  @@map("supplier_payments")
+}
+
+model GoodsReceipt {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  grnNo String @map("grn_no")
+  poId String? @map("po_id") @db.Uuid
+  receivedBy String @map("received_by") @db.Uuid
+  receivedAt DateTime @map("received_at")
+  deliveryNoteNo String? @map("delivery_note_no")
+  note String? @map("note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("GoodsReceipt_branch", fields: [branchId], references: [id])
+  po PurchaseOrder? @relation("GoodsReceipt_po", fields: [poId], references: [id])
+  receivedByUser User @relation("GoodsReceipt_receivedByUser", fields: [receivedBy], references: [id])
+  receiptLines ReceiptLine[] @relation("ReceiptLine_receipt")
+  @@unique([branchId, grnNo])
+  @@index([branchId, createdAt])
+  @@index([poId])
+  @@index([receivedBy])
+  @@map("goods_receipts")
+}
+
+model ReceiptLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  receiptId String @map("receipt_id") @db.Uuid
+  poLineId String? @map("po_line_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  qtyReceived Int @map("qty_received")
+  qtyAccepted Int @map("qty_accepted")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("ReceiptLine_branch", fields: [branchId], references: [id])
+  receipt GoodsReceipt @relation("ReceiptLine_receipt", fields: [receiptId], references: [id])
+  poLine PoLine? @relation("ReceiptLine_poLine", fields: [poLineId], references: [id])
+  item Item @relation("ReceiptLine_item", fields: [itemId], references: [id])
+  discrepancies Discrepancy[] @relation("Discrepancy_receiptLine")
+  @@index([branchId])
+  @@index([receiptId])
+  @@index([poLineId])
+  @@index([itemId])
+  @@map("receipt_lines")
+}
+
+model Transfer {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  transferNo String @map("transfer_no")
+  fromBranchId String @map("from_branch_id") @db.Uuid
+  toBranchId String @map("to_branch_id") @db.Uuid
+  status TransferStatus @default(REQUESTED) @map("status")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  fromBranch Branch @relation("Transfer_fromBranch", fields: [fromBranchId], references: [id])
+  toBranch Branch @relation("Transfer_toBranch", fields: [toBranchId], references: [id])
+  transferLines TransferLine[] @relation("TransferLine_transfer")
+  transferEvents TransferEvent[] @relation("TransferEvent_transfer")
+  @@unique([fromBranchId, transferNo])
+  @@index([fromBranchId, createdAt])
+  @@index([toBranchId, createdAt])
+  @@index([status])
+  @@map("transfers")
+}
+
+model TransferLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  transferId String @map("transfer_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  qtyRequested Int @map("qty_requested")
+  qtySent Int @map("qty_sent")
+  qtyReceived Int @default(0) @map("qty_received")
+  qtyDamaged Int @default(0) @map("qty_damaged")
+  serialNo String? @map("serial_no")
+  fromBranchId String @map("from_branch_id") @db.Uuid
+  toBranchId String @map("to_branch_id") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  transfer Transfer @relation("TransferLine_transfer", fields: [transferId], references: [id])
+  item Item @relation("TransferLine_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("TransferLine_serialUnit", fields: [serialUnitId], references: [id])
+  fromBranch Branch @relation("TransferLine_fromBranch", fields: [fromBranchId], references: [id])
+  toBranch Branch @relation("TransferLine_toBranch", fields: [toBranchId], references: [id])
+  discrepancies Discrepancy[] @relation("Discrepancy_transferLine")
+  @@index([transferId])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@index([fromBranchId])
+  @@index([toBranchId])
+  @@map("transfer_lines")
+}
+
+model Discrepancy {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  receiptLineId String? @map("receipt_line_id") @db.Uuid
+  transferLineId String? @map("transfer_line_id") @db.Uuid
+  type DiscrepancyType @map("type")
+  qty Int @map("qty")
+  status DiscrepancyStatus @default(OPEN) @map("status")
+  resolution DiscrepancyResolution? @map("resolution")
+  resolvedAt DateTime? @map("resolved_at")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Discrepancy_branch", fields: [branchId], references: [id])
+  receiptLine ReceiptLine? @relation("Discrepancy_receiptLine", fields: [receiptLineId], references: [id])
+  transferLine TransferLine? @relation("Discrepancy_transferLine", fields: [transferLineId], references: [id])
+  purchaseReturns PurchaseReturn[] @relation("PurchaseReturn_discrepancy")
+  @@index([branchId, status])
+  @@index([receiptLineId])
+  @@index([transferLineId])
+  @@map("discrepancies")
+}
+
+model TransferEvent {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  transferId String @map("transfer_id") @db.Uuid
+  status TransferStatus @map("status")
+  userId String @map("user_id") @db.Uuid
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  note String? @map("note")
+  fromBranchId String @map("from_branch_id") @db.Uuid
+  toBranchId String @map("to_branch_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  transfer Transfer @relation("TransferEvent_transfer", fields: [transferId], references: [id])
+  user User @relation("TransferEvent_user", fields: [userId], references: [id])
+  fromBranch Branch @relation("TransferEvent_fromBranch", fields: [fromBranchId], references: [id])
+  toBranch Branch @relation("TransferEvent_toBranch", fields: [toBranchId], references: [id])
+  @@index([transferId])
+  @@index([userId])
+  @@index([fromBranchId])
+  @@index([toBranchId])
+  @@map("transfer_events")
+}
+
+model Customer {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  name String @map("name")
+  phone String @map("phone")
+  gstin String? @map("gstin")
+  kycStatus KycStatus @default(NOT_SUBMITTED) @map("kyc_status")
+  address String? @map("address")
+  stateCode String? @map("state_code")
+  email String? @map("email")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  state State? @relation("Customer_state", fields: [stateCode], references: [code])
+  kycDocuments KycDocument[] @relation("KycDocument_customer")
+  leads Lead[] @relation("Lead_customer")
+  quotations Quotation[] @relation("Quotation_customer")
+  refunds CustomerRefund[] @relation("CustomerRefund_customer")
+  invoices Invoice[] @relation("Invoice_customer")
+  payments Payment[] @relation("Payment_customer")
+  @@index([phone])
+  @@index([stateCode])
+  @@map("customers")
+}
+
+model Broker {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  name String @map("name")
+  phone String? @unique @map("phone")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  leads Lead[] @relation("Lead_broker")
+  commissionRules CommissionRule[] @relation("CommissionRule_broker")
+  commissions Commission[] @relation("Commission_broker")
+  invoices Invoice[] @relation("Invoice_broker")
+  quotations Quotation[] @relation("Quotation_broker")
+  @@map("brokers")
+}
+
+model KycDocument {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  docType String @map("doc_type")
+  objectKey String @map("object_key")
+  status KycStatus @default(PENDING) @map("status")
+  fileName String @map("file_name")
+  mimeType String @map("mime_type")
+  sizeBytes Int @map("size_bytes")
+  docNumberMasked String? @map("doc_number_masked")
+  reviewedBy String? @map("reviewed_by") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at")
+  rejectionReason String? @map("rejection_reason")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  customer Customer @relation("KycDocument_customer", fields: [customerId], references: [id])
+  documentType KycDocumentType @relation("KycDocument_documentType", fields: [docType], references: [code])
+  reviewer User? @relation("KycDocument_reviewer", fields: [reviewedBy], references: [id])
+  @@index([customerId])
+  @@index([docType])
+  @@map("kyc_documents")
+}
+
+model Lead {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  name String @map("name")
+  phone String @map("phone")
+  customerId String? @map("customer_id") @db.Uuid
+  brokerId String? @map("broker_id") @db.Uuid
+  source String @map("source")
+  stage LeadStage @default(NEW) @map("stage")
+  assignedTo String? @map("assigned_to") @db.Uuid
+  interest String? @map("interest")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Lead_branch", fields: [branchId], references: [id])
+  customer Customer? @relation("Lead_customer", fields: [customerId], references: [id])
+  broker Broker? @relation("Lead_broker", fields: [brokerId], references: [id])
+  leadSource LeadSource @relation("Lead_leadSource", fields: [source], references: [code])
+  assignedToUser User? @relation("Lead_assignedToUser", fields: [assignedTo], references: [id])
+  leadFollowups LeadFollowup[] @relation("LeadFollowup_lead")
+  leadNotes LeadNote[] @relation("LeadNote_lead")
+  @@index([branchId, createdAt])
+  @@index([branchId, stage])
+  @@index([phone])
+  @@index([customerId])
+  @@index([brokerId])
+  @@index([source])
+  @@index([assignedTo])
+  @@map("leads")
+}
+
+model LeadFollowup {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  leadId String @map("lead_id") @db.Uuid
+  dueAt DateTime @map("due_at")
+  note String? @map("note")
+  completedAt DateTime? @map("completed_at")
+  completedBy String? @map("completed_by") @db.Uuid
+  completionNote String? @map("completion_note")
+  rescheduledCount Int @default(0) @map("rescheduled_count")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("LeadFollowup_branch", fields: [branchId], references: [id])
+  lead Lead @relation("LeadFollowup_lead", fields: [leadId], references: [id])
+  @@index([branchId, dueAt])
+  @@index([leadId])
+  @@map("lead_followups")
+}
+
+model LeadNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  leadId String @map("lead_id") @db.Uuid
+  body String @map("body")
+  fromStage LeadStage? @map("from_stage")
+  toStage LeadStage? @map("to_stage")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("LeadNote_branch", fields: [branchId], references: [id])
+  lead Lead @relation("LeadNote_lead", fields: [leadId], references: [id])
+  @@index([leadId, createdAt])
+  @@index([branchId])
+  @@map("lead_notes")
+}
+
+model CommissionRule {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  brokerId String @map("broker_id") @db.Uuid
+  type CommissionRuleType @map("type")
+  value Decimal @map("value") @db.Decimal(14, 2)
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  broker Broker @relation("CommissionRule_broker", fields: [brokerId], references: [id])
+  commissions Commission[] @relation("Commission_rule")
+  @@index([brokerId])
+  @@map("commission_rules")
+}
+
+model Commission {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  brokerId String @map("broker_id") @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  ruleId String @map("rule_id") @db.Uuid
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  status CommissionStatus @default(PAYABLE) @map("status")
+  baseAmount Decimal @map("base_amount") @db.Decimal(14, 2)
+  paidAt DateTime? @map("paid_at")
+  paidBy String? @map("paid_by") @db.Uuid
+  paidAmount Decimal? @map("paid_amount") @db.Decimal(14, 2)
+  payoutReference String? @map("payout_reference")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Commission_branch", fields: [branchId], references: [id])
+  broker Broker @relation("Commission_broker", fields: [brokerId], references: [id])
+  invoice Invoice @relation("Commission_invoice", fields: [invoiceId], references: [id])
+  rule CommissionRule @relation("Commission_rule", fields: [ruleId], references: [id])
+  adjustments CommissionAdjustment[] @relation("CommissionAdjustment_commission")
+  @@unique([invoiceId])
+  @@index([branchId, createdAt])
+  @@index([brokerId])
+  @@index([ruleId])
+  @@map("commissions")
+}
+
+model CommissionAdjustment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  commissionId String @map("commission_id") @db.Uuid
+  kind String @map("kind")
+  creditNoteId String? @unique @map("credit_note_id") @db.Uuid
+  exchangeId String? @unique @map("exchange_id") @db.Uuid
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("CommissionAdjustment_branch", fields: [branchId], references: [id])
+  commission Commission @relation("CommissionAdjustment_commission", fields: [commissionId], references: [id])
+  creditNote CreditNote? @relation("CommissionAdjustment_creditNote", fields: [creditNoteId], references: [id])
+  exchange Exchange? @relation("CommissionAdjustment_exchange", fields: [exchangeId], references: [id])
+  @@index([commissionId])
+  @@index([branchId])
+  @@map("commission_adjustments")
+}
+
+model Quotation {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  quotationNo String @map("quotation_no")
+  customerId String @map("customer_id") @db.Uuid
+  status QuotationStatus @default(DRAFT) @map("status")
+  total Decimal @default(0) @map("total") @db.Decimal(14, 2)
+  type InvoiceType @map("type")
+  validUntil DateTime @map("valid_until") @db.Date
+  subtotal Decimal @default(0) @map("subtotal") @db.Decimal(14, 2)
+  discountTotal Decimal @default(0) @map("discount_total") @db.Decimal(14, 2)
+  taxableValue Decimal @default(0) @map("taxable_value") @db.Decimal(14, 2)
+  cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  roundOff Decimal @default(0) @map("round_off") @db.Decimal(14, 2)
+  placeOfSupply String? @map("place_of_supply")
+  brokerId String? @map("broker_id") @db.Uuid
+  isCustomBuild Boolean @default(false) @map("is_custom_build")
+  specification String? @map("specification")
+  buildStage String @default("NOT_STARTED") @map("build_stage")
+  sentAt DateTime? @map("sent_at")
+  acceptedAt DateTime? @map("accepted_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  cancelReason String? @map("cancel_reason")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Quotation_branch", fields: [branchId], references: [id])
+  customer Customer @relation("Quotation_customer", fields: [customerId], references: [id])
+  supplyState State? @relation("Quotation_supplyState", fields: [placeOfSupply], references: [code])
+  broker Broker? @relation("Quotation_broker", fields: [brokerId], references: [id])
+  invoices Invoice[] @relation("Invoice_quotation")
+  lines QuotationLine[] @relation("QuotationLine_quotation")
+  buildUpdates QuotationBuildUpdate[] @relation("QuotationBuildUpdate_quotation")
+  advances Payment[] @relation("Payment_quotation")
+  @@unique([branchId, quotationNo])
+  @@index([branchId, createdAt])
+  @@index([branchId, status])
+  @@index([customerId])
+  @@index([brokerId])
+  @@index([placeOfSupply])
+  @@map("quotations")
+}
+
+model QuotationLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  quotationId String @map("quotation_id") @db.Uuid
+  lineNo Int @map("line_no")
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  qty Int @map("qty")
+  hsnCode String? @map("hsn_code")
+  taxRate Decimal? @map("tax_rate") @db.Decimal(5, 2)
+  unitPrice Decimal @map("unit_price") @db.Decimal(14, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  taxableAmount Decimal @default(0) @map("taxable_amount") @db.Decimal(14, 2)
+  cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  amount Decimal @default(0) @map("amount") @db.Decimal(14, 2)
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("QuotationLine_branch", fields: [branchId], references: [id])
+  quotation Quotation @relation("QuotationLine_quotation", fields: [quotationId], references: [id])
+  item Item @relation("QuotationLine_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("QuotationLine_serialUnit", fields: [serialUnitId], references: [id])
+  @@unique([quotationId, lineNo])
+  @@index([branchId])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@map("quotation_lines")
+}
+
+model QuotationBuildUpdate {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  quotationId String @map("quotation_id") @db.Uuid
+  stage String @map("stage")
+  note String? @map("note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("QuotationBuildUpdate_branch", fields: [branchId], references: [id])
+  quotation Quotation @relation("QuotationBuildUpdate_quotation", fields: [quotationId], references: [id])
+  @@index([quotationId, createdAt])
+  @@index([branchId])
+  @@map("quotation_build_updates")
+}
+
+model Invoice {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  invoiceNo String? @map("invoice_no")
+  quotationId String? @map("quotation_id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  type InvoiceType @map("type")
+  total Decimal @default(0) @map("total") @db.Decimal(14, 2)
+  status InvoiceStatus @default(DRAFT) @map("status")
+  issuedOn DateTime? @map("issued_on") @db.Date
+  subtotal Decimal @default(0) @map("subtotal") @db.Decimal(14, 2)
+  discountTotal Decimal @default(0) @map("discount_total") @db.Decimal(14, 2)
+  taxableValue Decimal @default(0) @map("taxable_value") @db.Decimal(14, 2)
+  cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  roundOff Decimal @default(0) @map("round_off") @db.Decimal(14, 2)
+  placeOfSupply String? @map("place_of_supply")
+  branchGstin String? @map("branch_gstin")
+  customerGstin String? @map("customer_gstin")
+  dueDate DateTime? @map("due_date") @db.Date
+  cancelledAt DateTime? @map("cancelled_at")
+  cancelledBy String? @map("cancelled_by") @db.Uuid
+  cancelReason String? @map("cancel_reason")
+  replacesInvoiceId String? @map("replaces_invoice_id") @db.Uuid
+  brokerId String? @map("broker_id") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  canceller User? @relation("Invoice_canceller", fields: [cancelledBy], references: [id])
+  replaces Invoice? @relation("Invoice_replaces", fields: [replacesInvoiceId], references: [id])
+  broker Broker? @relation("Invoice_broker", fields: [brokerId], references: [id])
+  reissuedAs Invoice[] @relation("Invoice_replaces")
+  branch Branch @relation("Invoice_branch", fields: [branchId], references: [id])
+  quotation Quotation? @relation("Invoice_quotation", fields: [quotationId], references: [id])
+  customer Customer @relation("Invoice_customer", fields: [customerId], references: [id])
+  supplyState State? @relation("Invoice_supplyState", fields: [placeOfSupply], references: [code])
+  commissions Commission[] @relation("Commission_invoice")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_invoice")
+  exchanges Exchange[] @relation("Exchange_invoice")
+  originalExchanges Exchange[] @relation("Exchange_originalInvoice")
+  creditNotes CreditNote[] @relation("CreditNote_invoice")
+  paymentAllocations PaymentAllocation[] @relation("PaymentAllocation_invoice")
+  @@unique([branchId, type, invoiceNo])
+  @@index([branchId, createdAt])
+  @@index([branchId, status])
+  @@index([quotationId])
+  @@index([customerId])
+  @@index([placeOfSupply])
+  @@index([replacesInvoiceId])
+  @@index([brokerId])
+  @@index([branchId, issuedOn])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  lineNo Int @default(1) @map("line_no")
+  qty Int @map("qty")
+  hsnCode String? @map("hsn_code")
+  taxRate Decimal? @map("tax_rate") @db.Decimal(5, 2)
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  unitPrice Decimal @map("unit_price") @db.Decimal(14, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  taxableAmount Decimal @map("taxable_amount") @db.Decimal(14, 2)
+  cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("InvoiceLine_branch", fields: [branchId], references: [id])
+  invoice Invoice @relation("InvoiceLine_invoice", fields: [invoiceId], references: [id])
+  creditNoteLines CreditNoteLine[] @relation("CreditNoteLine_invoiceLine")
+  item Item @relation("InvoiceLine_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("InvoiceLine_serialUnit", fields: [serialUnitId], references: [id])
+  hsn HsnCode? @relation("InvoiceLine_hsn", fields: [hsnCode], references: [code])
+  gstSlab GstRate? @relation("InvoiceLine_gstSlab", fields: [taxRate], references: [rate])
+  @@unique([invoiceId, lineNo])
+  @@index([branchId])
+  @@index([invoiceId])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@index([hsnCode])
+  @@index([taxRate])
+  @@map("invoice_lines")
+}
+
+model Exchange {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  oldSerialUnitId String @map("old_serial_unit_id") @db.Uuid
+  newSerialUnitId String @map("new_serial_unit_id") @db.Uuid
+  differenceAmount Decimal @map("difference_amount") @db.Decimal(14, 2)
+  exchangeNo String @map("exchange_no")
+  kind String @map("kind")
+  status ApprovalStatus @default(PENDING) @map("status")
+  originalInvoiceId String @map("original_invoice_id") @db.Uuid
+  returnedAmount Decimal @map("returned_amount") @db.Decimal(14, 2)
+  returnedTaxable Decimal @map("returned_taxable") @db.Decimal(14, 2)
+  valuationAmount Decimal @map("valuation_amount") @db.Decimal(14, 2)
+  newAmount Decimal @map("new_amount") @db.Decimal(14, 2)
+  disposition String @map("disposition")
+  reason String @map("reason")
+  decidedBy String? @map("decided_by") @db.Uuid
+  decidedAt DateTime? @map("decided_at")
+  decisionNote String? @map("decision_note")
+  tradeInPaymentId String? @map("trade_in_payment_id") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Exchange_branch", fields: [branchId], references: [id])
+  invoice Invoice @relation("Exchange_invoice", fields: [invoiceId], references: [id])
+  oldSerialUnit SerialUnit @relation("Exchange_oldSerialUnit", fields: [oldSerialUnitId], references: [id])
+  newSerialUnit SerialUnit @relation("Exchange_newSerialUnit", fields: [newSerialUnitId], references: [id])
+  originalInvoice Invoice @relation("Exchange_originalInvoice", fields: [originalInvoiceId], references: [id])
+  decider User? @relation("Exchange_decider", fields: [decidedBy], references: [id])
+  tradeInPayment Payment? @relation("Exchange_tradeInPayment", fields: [tradeInPaymentId], references: [id])
+  commissionAdjustment CommissionAdjustment? @relation("CommissionAdjustment_exchange")
+  @@unique([branchId, exchangeNo])
+  @@index([branchId, createdAt])
+  @@index([branchId, status])
+  @@index([originalInvoiceId])
+  @@index([decidedBy])
+  @@index([tradeInPaymentId])
+  @@index([invoiceId])
+  @@index([oldSerialUnitId])
+  @@index([newSerialUnitId])
+  @@map("exchanges")
+}
+
+model CreditNote {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  creditNoteNo String? @map("credit_note_no")
+  invoiceId String @map("invoice_id") @db.Uuid
+  reason String @map("reason")
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  status ApprovalStatus @default(PENDING) @map("status")
+  taxableValue Decimal @default(0) @map("taxable_value") @db.Decimal(14, 2)
+  cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  decidedBy String? @map("decided_by") @db.Uuid
+  decidedAt DateTime? @map("decided_at")
+  decisionNote String? @map("decision_note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("CreditNote_branch", fields: [branchId], references: [id])
+  invoice Invoice @relation("CreditNote_invoice", fields: [invoiceId], references: [id])
+  decider User? @relation("CreditNote_decider", fields: [decidedBy], references: [id])
+  lines CreditNoteLine[] @relation("CreditNoteLine_creditNote")
+  commissionAdjustment CommissionAdjustment? @relation("CommissionAdjustment_creditNote")
+  @@unique([branchId, creditNoteNo])
+  @@index([branchId, createdAt])
+  @@index([invoiceId])
+  @@index([status])
+  @@index([branchId, decidedAt])
+  @@map("credit_notes")
+}
+
+model CreditNoteLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  creditNoteId String @map("credit_note_id") @db.Uuid
+  invoiceLineId String @map("invoice_line_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  lineNo Int @map("line_no")
+  qty Int @map("qty")
+  taxableAmount Decimal @map("taxable_amount") @db.Decimal(14, 2)
+  cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
+  sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
+  igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("CreditNoteLine_branch", fields: [branchId], references: [id])
+  creditNote CreditNote @relation("CreditNoteLine_creditNote", fields: [creditNoteId], references: [id])
+  invoiceLine InvoiceLine @relation("CreditNoteLine_invoiceLine", fields: [invoiceLineId], references: [id])
+  item Item @relation("CreditNoteLine_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("CreditNoteLine_serialUnit", fields: [serialUnitId], references: [id])
+  @@unique([creditNoteId, lineNo])
+  @@unique([creditNoteId, invoiceLineId])
+  @@index([branchId])
+  @@index([invoiceLineId])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@map("credit_note_lines")
+}
+
+model PaymentAllocation {
+  paymentId String @map("payment_id") @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  payment Payment @relation("PaymentAllocation_payment", fields: [paymentId], references: [id])
+  invoice Invoice @relation("PaymentAllocation_invoice", fields: [invoiceId], references: [id])
+  branch Branch @relation("PaymentAllocation_branch", fields: [branchId], references: [id])
+  @@id([paymentId, invoiceId])
+  @@index([invoiceId])
+  @@index([branchId])
+  @@map("payment_allocations")
+}
+
+model Payment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  receiptNo String @map("receipt_no")
+  customerId String @map("customer_id") @db.Uuid
+  mode String @map("mode")
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  paidOn DateTime @map("paid_on") @db.Date
+  reference String? @map("reference")
+  note String? @map("note")
+  idempotencyKey String? @map("idempotency_key")
+  quotationId String? @map("quotation_id") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Payment_branch", fields: [branchId], references: [id])
+  customer Customer @relation("Payment_customer", fields: [customerId], references: [id])
+  paymentMode PaymentMode @relation("Payment_paymentMode", fields: [mode], references: [code])
+  paymentAllocations PaymentAllocation[] @relation("PaymentAllocation_payment")
+  reversal PaymentReversal? @relation("PaymentReversal_payment")
+  quotation Quotation? @relation("Payment_quotation", fields: [quotationId], references: [id])
+  tradeInExchanges Exchange[] @relation("Exchange_tradeInPayment")
+  @@unique([branchId, receiptNo])
+  @@unique([branchId, idempotencyKey])
+  @@index([branchId, createdAt])
+  @@index([customerId])
+  @@index([mode])
+  @@index([customerId, paidOn])
+  @@index([quotationId])
+  @@index([branchId, paidOn])
+  @@map("payments")
+}
+
+model PaymentReversal {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  paymentId String @unique @map("payment_id") @db.Uuid
+  reason String @map("reason")
+  reversedOn DateTime @map("reversed_on") @db.Date
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("PaymentReversal_branch", fields: [branchId], references: [id])
+  payment Payment @relation("PaymentReversal_payment", fields: [paymentId], references: [id])
+  @@index([branchId])
+  @@map("payment_reversals")
+}
+
+model Staff {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+  department String? @map("department")
+  joinDate DateTime @map("join_date") @db.Date
+  status StaffStatus @default(ACTIVE) @map("status")
+  employeeCode String @unique @map("employee_code")
+  designation String? @map("designation")
+  monthlySalary Decimal @map("monthly_salary") @db.Decimal(14, 2)
+  leftOn DateTime? @map("left_on") @db.Date
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Staff_branch", fields: [branchId], references: [id])
+  user User @relation("Staff_user", fields: [userId], references: [id])
+  departmentRef Department? @relation("Staff_departmentRef", fields: [department], references: [code])
+  attendances Attendance[] @relation("Attendance_staff")
+  leaveRequests LeaveRequest[] @relation("LeaveRequest_staff")
+  payrollRecords PayrollRecord[] @relation("PayrollRecord_staff")
+  @@index([branchId])
+  @@index([department])
+  @@map("staff")
+}
+
+model Attendance {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  staffId String @map("staff_id") @db.Uuid
+  workDate DateTime @map("work_date") @db.Date
+  checkIn DateTime? @map("check_in")
+  checkOut DateTime? @map("check_out")
+  correctedBy String? @map("corrected_by") @db.Uuid
+  correctionReason String? @map("correction_reason")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Attendance_branch", fields: [branchId], references: [id])
+  staff Staff @relation("Attendance_staff", fields: [staffId], references: [id])
+  corrector User? @relation("Attendance_corrector", fields: [correctedBy], references: [id])
+  @@unique([staffId, workDate])
+  @@index([branchId])
+  @@index([correctedBy])
+  @@index([workDate])
+  @@map("attendance")
+}
+
+model LeaveRequest {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  staffId String @map("staff_id") @db.Uuid
+  fromDate DateTime @map("from_date") @db.Date
+  toDate DateTime @map("to_date") @db.Date
+  status LeaveStatus @default(PENDING) @map("status")
+  kind String @map("kind")
+  reason String? @map("reason")
+  decidedBy String? @map("decided_by") @db.Uuid
+  decidedAt DateTime? @map("decided_at")
+  decisionNote String? @map("decision_note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("LeaveRequest_branch", fields: [branchId], references: [id])
+  staff Staff @relation("LeaveRequest_staff", fields: [staffId], references: [id])
+  decider User? @relation("LeaveRequest_decider", fields: [decidedBy], references: [id])
+  @@index([staffId, fromDate])
+  @@index([staffId, status])
+  @@index([decidedBy])
+  @@index([branchId])
+  @@map("leave_requests")
+}
+
+model PayrollRecord {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  staffId String @map("staff_id") @db.Uuid
+  month String @map("month")
+  gross Decimal @map("gross") @db.Decimal(14, 2)
+  net Decimal @map("net") @db.Decimal(14, 2)
+  status String @default("DRAFT") @map("status")
+  deductions Decimal @default(0) @map("deductions") @db.Decimal(14, 2)
+  deductionNote String? @map("deduction_note")
+  monthlySalary Decimal @map("monthly_salary") @db.Decimal(14, 2)
+  daysInMonth Int @map("days_in_month")
+  daysEmployed Int @map("days_employed")
+  daysPresent Int @map("days_present")
+  paidLeaveDays Int @map("paid_leave_days")
+  unpaidLeaveDays Int @map("unpaid_leave_days")
+  finalizedBy String? @map("finalized_by") @db.Uuid
+  finalizedAt DateTime? @map("finalized_at")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("PayrollRecord_branch", fields: [branchId], references: [id])
+  staff Staff @relation("PayrollRecord_staff", fields: [staffId], references: [id])
+  finalizer User? @relation("PayrollRecord_finalizer", fields: [finalizedBy], references: [id])
+  @@unique([staffId, month])
+  @@index([branchId])
+  @@index([finalizedBy])
+  @@index([month])
+  @@map("payroll_records")
+}
+
+model AuditLog {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  actorId String? @map("actor_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+  action String @map("action")
+  entityType String @map("entity_type")
+  entityId String? @map("entity_id") @db.Uuid
+  oldValue Json? @map("old_value")
+  newValue Json? @map("new_value")
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  requestId String? @map("request_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  actor User? @relation("AuditLog_actor", fields: [actorId], references: [id])
+  branch Branch? @relation("AuditLog_branch", fields: [branchId], references: [id])
+  @@index([branchId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_log")
+}
+
+model Notification {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  branchId String? @map("branch_id") @db.Uuid
+  channel NotificationChannel @map("channel")
+  message String @map("message")
+  status NotificationStatus @default(PENDING) @map("status")
+  kind String @default("GENERAL") @map("kind")
+  title String @default("") @map("title")
+  link String? @map("link")
+  dedupeKey String? @map("dedupe_key")
+  readAt DateTime? @map("read_at")
+  attempts Int @default(0) @map("attempts")
+  lastError String? @map("last_error")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  user User @relation("Notification_user", fields: [userId], references: [id])
+  branch Branch? @relation("Notification_branch", fields: [branchId], references: [id])
+  @@unique([userId, channel, dedupeKey])
+  @@index([userId, status])
+  @@index([branchId])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model OutboxEvent {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  eventType String @map("event_type")
+  payload Json @map("payload")
+  status OutboxStatus @default(PENDING) @map("status")
+  createdAt DateTime @default(now()) @map("created_at")
+  branchId String? @map("branch_id") @db.Uuid
+  processedAt DateTime? @map("processed_at")
+  attempts Int @default(0) @map("attempts")
+  lastError String? @map("last_error")
+  branch Branch? @relation("OutboxEvent_branch", fields: [branchId], references: [id])
+  @@index([branchId])
+  @@map("outbox_events")
+}
+
+model Approval {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  requestedBy String @map("requested_by") @db.Uuid
+  approvedBy String? @map("approved_by") @db.Uuid
+  status ApprovalStatus @default(PENDING) @map("status")
+  reason String? @map("reason")
+  decidedAt DateTime? @map("decided_at")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Approval_branch", fields: [branchId], references: [id])
+  requester User @relation("Approval_requester", fields: [requestedBy], references: [id])
+  approver User? @relation("Approval_approver", fields: [approvedBy], references: [id])
+  @@index([entityType, entityId])
+  @@index([branchId, status])
+  @@index([requestedBy])
+  @@index([approvedBy])
+  @@map("approvals")
+}
+
+model Attachment {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  objectKey String @map("object_key")
+  mimeType String @map("mime_type")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Attachment_branch", fields: [branchId], references: [id])
+  @@index([entityType, entityId])
+  @@index([branchId])
+  @@map("attachments")
+}
+
+model State {
+  code String @id @map("code")
+  name String @map("name")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branches Branch[] @relation("Branch_state")
+  suppliers Supplier[] @relation("Supplier_state")
+  customers Customer[] @relation("Customer_state")
+  invoices Invoice[] @relation("Invoice_supplyState")
+  quotations Quotation[] @relation("Quotation_supplyState")
+  @@map("states")
+}
+
+model GstRate {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  rate Decimal @unique @map("rate") @db.Decimal(5, 2)
+  label String @map("label")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  items Item[] @relation("Item_gstSlab")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_gstSlab")
+  hsnCodes HsnCode[] @relation("HsnCode_gstSlab")
+  @@map("gst_rates")
+}
+
+model HsnCode {
+  code String @id @map("code")
+  description String @map("description")
+  gstRate Decimal? @map("gst_rate") @db.Decimal(5, 2)
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  gstSlab GstRate? @relation("HsnCode_gstSlab", fields: [gstRate], references: [rate])
+  items Item[] @relation("Item_hsn")
+  invoiceLines InvoiceLine[] @relation("InvoiceLine_hsn")
+  @@index([gstRate])
+  @@map("hsn_codes")
+}
+
+model UnitOfMeasure {
+  code String @id @map("code")
+  name String @map("name")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  items Item[] @relation("Item_unit")
+  @@map("units_of_measure")
+}
+
+model PaymentMode {
+  code String @id @map("code")
+  name String @map("name")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  supplierPayments SupplierPayment[] @relation("SupplierPayment_paymentMode")
+  payments Payment[] @relation("Payment_paymentMode")
+  refunds CustomerRefund[] @relation("CustomerRefund_mode")
+  @@map("payment_modes")
+}
+
+model LeadSource {
+  code String @id @map("code")
+  name String @map("name")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  leads Lead[] @relation("Lead_leadSource")
+  @@map("lead_sources")
+}
+
+model KycDocumentType {
+  code String @id @map("code")
+  name String @map("name")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  kycDocuments KycDocument[] @relation("KycDocument_documentType")
+  @@map("kyc_document_types")
+}
+
+model Department {
+  code String @id @map("code")
+  name String @map("name")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  staffs Staff[] @relation("Staff_departmentRef")
+  @@map("departments")
+}
+
+model DocumentSequence {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  docType DocumentType @map("doc_type")
+  financialYear String @map("financial_year")
+  prefix String @map("prefix")
+  nextNumber Int @default(1) @map("next_number")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("DocumentSequence_branch", fields: [branchId], references: [id])
+  @@unique([branchId, docType, financialYear])
+  @@map("document_sequences")
+}
+
+model PurchaseReturn {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  returnNo String @map("return_no")
+  supplierId String @map("supplier_id") @db.Uuid
+  poId String? @map("po_id") @db.Uuid
+  discrepancyId String? @map("discrepancy_id") @db.Uuid
+  reason String @map("reason")
+  returnedOn DateTime @map("returned_on") @db.Date
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("PurchaseReturn_branch", fields: [branchId], references: [id])
+  supplier Supplier @relation("PurchaseReturn_supplier", fields: [supplierId], references: [id])
+  po PurchaseOrder? @relation("PurchaseReturn_po", fields: [poId], references: [id])
+  discrepancy Discrepancy? @relation("PurchaseReturn_discrepancy", fields: [discrepancyId], references: [id])
+  lines PurchaseReturnLine[] @relation("PurchaseReturnLine_return")
+  @@unique([branchId, returnNo])
+  @@index([supplierId])
+  @@index([poId])
+  @@index([discrepancyId])
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnLine {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  returnId String @map("return_id") @db.Uuid
+  poLineId String? @map("po_line_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  serialUnitId String? @map("serial_unit_id") @db.Uuid
+  qty Int @map("qty")
+  unitCost Decimal @map("unit_cost") @db.Decimal(14, 2)
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("PurchaseReturnLine_branch", fields: [branchId], references: [id])
+  return PurchaseReturn @relation("PurchaseReturnLine_return", fields: [returnId], references: [id])
+  poLine PoLine? @relation("PurchaseReturnLine_poLine", fields: [poLineId], references: [id])
+  item Item @relation("PurchaseReturnLine_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("PurchaseReturnLine_serialUnit", fields: [serialUnitId], references: [id])
+  @@index([branchId])
+  @@index([returnId])
+  @@index([poLineId])
+  @@index([itemId])
+  @@index([serialUnitId])
+  @@map("purchase_return_lines")
+}
+
+model CustomerRefund {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  refundNo String @map("refund_no")
+  amount Decimal @map("amount") @db.Decimal(14, 2)
+  mode String @map("mode")
+  paidOn DateTime @map("paid_on") @db.Date
+  reference String? @map("reference")
+  reason String @map("reason")
+  idempotencyKey String @map("idempotency_key")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("CustomerRefund_branch", fields: [branchId], references: [id])
+  customer Customer @relation("CustomerRefund_customer", fields: [customerId], references: [id])
+  paymentMode PaymentMode @relation("CustomerRefund_mode", fields: [mode], references: [code])
+  @@unique([branchId, refundNo])
+  @@unique([branchId, idempotencyKey])
+  @@index([customerId, paidOn])
+  @@index([mode])
+  @@map("customer_refunds")
+}
+
+model AppSetting {
+  key String @id @map("key")
+  value Json @map("value")
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  updatedByUser User? @relation("AppSetting_updatedByUser", fields: [updatedBy], references: [id])
+  @@map("app_settings")
+}

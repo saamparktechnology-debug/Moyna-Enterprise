@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp
+      POSTGRES_DB: erp_dev
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - erp_pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/create-test-database.sql:/docker-entrypoint-initdb.d/10-create-test-database.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U erp -d erp_dev']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Optional, for development only: a web page to browse the database.
+  adminer:
+    image: adminer:4
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Bound to this computer only, so nobody else on your network can open it.
+      - '127.0.0.1:${ADMINER_PORT:-8080}:8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+
+volumes:
+  erp_pgdata:
