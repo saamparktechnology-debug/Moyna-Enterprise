@@ -1,3 +1,4 @@
+//apps/web/src/features/quotations/quotation-form-dialog.tsx
 import { useState } from 'react';
 import {
   CreateQuotationRequestSchema,
@@ -95,7 +96,7 @@ export function QuotationFormDialog({ quotation, onClose, onSaved }: Props) {
     { page: 1, pageSize: 100, search: '', status: 'active' },
     can('brokers.view'),
   );
-  const usable = (brokers.data?.items ?? []).filter((item) => item.activeRule !== null);
+  const usable = brokers.data?.items ?? [];
   const busy = create.isPending || update.isPending;
 
   const change = (key: number, patch: Partial<LineState>) =>
@@ -237,7 +238,8 @@ export function QuotationFormDialog({ quotation, onClose, onSaved }: Props) {
                   ) : null}
                   {usable.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name} · {ruleText(item.activeRule)}
+                      {item.name}
+                      {item.activeRule ? ` · ${ruleText(item.activeRule)}` : ''}
                     </option>
                   ))}
                 </Select>

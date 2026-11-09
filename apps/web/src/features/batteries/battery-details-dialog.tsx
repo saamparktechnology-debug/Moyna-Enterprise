@@ -1,3 +1,4 @@
+//apps/web/src/features/batteries/battery-details-dialog.tsx
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { MAX_WARRANTY_MONTHS, SetBatteryDetailsRequestSchema } from '@erp/contracts';

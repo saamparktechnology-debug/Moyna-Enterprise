@@ -1,3 +1,4 @@
+//apps/api/src/features/reports/xlsx-exporter.ts
 import type { ReportColumn } from '@erp/contracts';
 import type { ExportableReport, ReportCellValue, ReportExporter } from './export-types.js';
 import { zip } from './zip.js';

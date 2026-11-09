@@ -1,3 +1,4 @@
+//apps/api/src/features/users/users.module.ts
 import { Module } from '@nestjs/common';
 import { PasswordService } from '../auth/password.service.js';
 import { UsersController } from './users.controller.js';

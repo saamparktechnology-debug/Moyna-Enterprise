@@ -1,3 +1,4 @@
+//apps/api/test/integration/schema-conformance.int.test.ts
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MODEL_SCOPES } from '../../src/common/prisma/branch-scope.js';

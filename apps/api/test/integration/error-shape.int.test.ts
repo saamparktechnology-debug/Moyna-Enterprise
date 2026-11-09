@@ -1,3 +1,4 @@
+//apps/api/test/integration/error-shape.int.test.ts
 import { Body, ConflictException, Controller, Get, Param, Post } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ErrorResponseSchema } from '@erp/contracts';

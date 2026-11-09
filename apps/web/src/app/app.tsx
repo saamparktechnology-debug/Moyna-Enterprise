@@ -1,3 +1,4 @@
+//apps/web/src/app/app.tsx
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { AuthProvider } from '@/features/auth/auth-provider';

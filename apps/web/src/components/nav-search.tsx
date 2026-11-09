@@ -1,3 +1,4 @@
+//apps/web/src/components/nav-search.tsx
 import { Search, Star } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import type { KeyboardEvent, Ref } from 'react';

@@ -41,9 +41,14 @@ import {
 } from '../../common/pagination/pagination.js';
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
+import { STORAGE_SERVICE } from '../../common/storage/storage.service.js';
+import type { StorageService } from '../../common/storage/storage.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
 import { BatteriesService } from '../batteries/batteries.service.js';
 import { CommissionsService } from '../brokers/commissions.service.js';
+import { checkUploadedFile, FILE_EXTENSIONS } from '../brokers/uploads.js';
+import { randomUUID } from 'node:crypto';
+import { BrokerFileUploadQuerySchema } from '@erp/contracts';
 import { QuotationsService } from '../quotations/quotations.service.js';
 import { StockPostingService } from '../stock/stock-posting.service.js';
 import { INVOICE_INCLUDE, invoiceSnapshot, toInvoiceDto, toSummaryDto } from './billing.mapper.js';
@@ -70,6 +75,8 @@ interface Prepared {
       unitCode: string;
       hsnCode: string | null;
       taxRate: Prisma.Decimal | null;
+      actualPurchasePrice: Prisma.Decimal | null;
+      displayPurchasePrice: Prisma.Decimal | null;
     };
     serialNo: string | null;
   }[];
@@ -91,17 +98,29 @@ export class BillingService {
     @Inject(BranchContextService) private readonly contexts: BranchContextService,
     @Inject(CommissionsService) private readonly commissions: CommissionsService,
     @Inject(QuotationsService) private readonly quotations: QuotationsService,
+    @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
   // ---------- reading ----------
 
-  async list(rawQuery: unknown): Promise<InvoiceListResponse> {
+  async list(auth: AuthContext, rawQuery: unknown): Promise<InvoiceListResponse> {
     const query = InvoiceListQuerySchema.parse(rawQuery);
     const filters: Prisma.InvoiceWhereInput[] = [];
     if (query.status !== 'all') filters.push({ status: query.status });
     if (query.type !== 'all') filters.push({ type: query.type });
     if (query.customerId) filters.push({ customerId: query.customerId });
     if (query.branchId) filters.push({ branchId: query.branchId });
+    if (query.brokerId) filters.push({ brokerId: query.brokerId });
+    if (query.categoryId)
+      filters.push({ invoiceLines: { some: { item: { categoryId: query.categoryId } } } });
+    if (query.groupId)
+      filters.push({
+        invoiceLines: {
+          some: {
+            item: { category: { OR: [{ id: query.groupId }, { parentId: query.groupId }] } },
+          },
+        },
+      });
     if (query.from) filters.push({ issuedOn: { gte: parseIsoDate(query.from) } });
     if (query.to) filters.push({ issuedOn: { lte: parseIsoDate(query.to) } });
     const search = query.search?.trim();
@@ -116,17 +135,33 @@ export class BillingService {
         tx.invoice.findMany({
           where,
           orderBy,
-          include: { branch: true, customer: true, _count: { select: { invoiceLines: true } } },
+          include: {
+            branch: true,
+            customer: true,
+            _count: { select: { invoiceLines: true } },
+            invoiceLines: {
+              select: {
+                qty: true,
+                taxableAmount: true,
+                unitCostActual: true,
+                unitCostDisplay: true,
+              },
+            },
+          },
           ...toSkipTake(query),
         }),
         tx.invoice.count({ where }),
       ]);
-      return buildPage(rows.map(toSummaryDto), total, query);
+      return buildPage(
+        rows.map((row) => toSummaryDto(row, auth)),
+        total,
+        query,
+      );
     });
   }
 
-  async get(id: string): Promise<Invoice> {
-    return this.transactions.run(async (tx) => toInvoiceDto(await this.load(tx, id)));
+  async get(auth: AuthContext, id: string): Promise<Invoice> {
+    return this.transactions.run(async (tx) => toInvoiceDto(await this.load(tx, id), auth));
   }
 
   async preview(body: unknown): Promise<InvoicePreview> {
@@ -146,7 +181,7 @@ export class BillingService {
   async pdf(id: string): Promise<{ body: Buffer; fileName: string }> {
     return this.transactions.run(async (tx) => {
       const row = await this.load(tx, id);
-      const invoice = toInvoiceDto(row);
+      const invoice = toInvoiceDto(row, { isSuperAdmin: false });
       const body = buildInvoicePdf(invoice, row.branch.name);
       const label = (row.invoiceNo ?? `draft-${row.id.slice(0, 8)}`).replace(
         /[^A-Za-z0-9._-]/g,
@@ -170,13 +205,14 @@ export class BillingService {
         branchId,
         newValue: invoiceSnapshot(row),
       });
-      return toInvoiceDto(row);
+      return toInvoiceDto(row, auth);
     });
   }
 
   async updateDraft(auth: AuthContext, id: string, body: unknown): Promise<Invoice> {
     const input = UpdateInvoiceRequestSchema.parse(body);
-    return this.transactions.run(async (tx) => {
+    let releasedKey: string | null = null;
+    const result = await this.transactions.run(async (tx) => {
       const current = await this.lock(tx, id);
       this.assertVersion(current, input.rowVersion);
       this.assertDraft(current, 'edited');
@@ -188,12 +224,16 @@ export class BillingService {
       await tx.invoiceLine.createMany({
         data: this.lineRows(prepared, id, current.branchId, auth.userId),
       });
+      const keepsGift = input.commission?.type === 'GIFT';
+      if (!keepsGift && current.giftPhotoKey) releasedKey = current.giftPhotoKey;
       await tx.invoice.update({
         where: { id },
         data: {
           customerId: input.customerId,
           type: input.type,
           brokerId: input.brokerId,
+          ...this.commissionColumns(input),
+          ...(keepsGift ? {} : this.noGiftPhoto()),
           dueDate: input.dueDate ? parseIsoDate(input.dueDate) : null,
           ...this.headerData(prepared),
           updatedBy: auth.userId,
@@ -208,16 +248,20 @@ export class BillingService {
         oldValue: invoiceSnapshot(current),
         newValue: invoiceSnapshot(row),
       });
-      return toInvoiceDto(row);
+      return toInvoiceDto(row, auth);
     });
+    if (releasedKey) await this.dropGiftObject(releasedKey);
+    return result;
   }
 
   async discardDraft(auth: AuthContext, id: string, body: unknown): Promise<void> {
     const input = DiscardInvoiceRequestSchema.parse(body);
+    let releasedKey: string | null = null;
     await this.transactions.run(async (tx) => {
       const current = await this.lock(tx, id);
       this.assertVersion(current, input.rowVersion);
       this.assertDraft(current, 'discarded');
+      releasedKey = current.giftPhotoKey;
       await this.discard(tx, id);
       await this.audit.record(tx, {
         action: 'INVOICE_DRAFT_DISCARDED',
@@ -227,6 +271,139 @@ export class BillingService {
         oldValue: invoiceSnapshot(current),
       });
     });
+    if (releasedKey) await this.dropGiftObject(releasedKey);
+  }
+
+  // ---------- gift photo ----------
+
+  /** Adds or replaces the photo of the gift agreed on a draft invoice. The photo is a JPEG or PNG, sent as the request body. */
+  async setGiftPhoto(
+    auth: AuthContext,
+    id: string,
+    input: { query: unknown; body: unknown; declaredType: string | undefined },
+  ): Promise<Invoice> {
+    const query = BrokerFileUploadQuerySchema.parse(input.query);
+    const { bytes, mimeType } = checkUploadedFile(input.body, input.declaredType, false);
+    const objectKey = `invoices/${id}/gift-${randomUUID()}.${FILE_EXTENSIONS[mimeType]}`;
+    let stored = false;
+    let previousKey: string | null = null;
+    try {
+      const result = await this.transactions.run(async (tx) => {
+        const current = await this.lock(tx, id);
+        this.assertDraft(current, 'edited');
+        if (current.commissionType !== 'GIFT')
+          throw new ValidationFailedError('Agree a gift commission first', [
+            {
+              field: 'commission',
+              message: 'Choose Gift and save the invoice before adding a photo',
+            },
+          ]);
+        await this.storage.put(objectKey, bytes, mimeType);
+        stored = true;
+        previousKey = current.giftPhotoKey;
+        await tx.invoice.update({
+          where: { id },
+          data: {
+            giftPhotoKey: objectKey,
+            giftPhotoFileName: query.fileName,
+            giftPhotoMime: mimeType,
+            giftPhotoSize: bytes.length,
+            updatedBy: auth.userId,
+          },
+        });
+        await this.audit.record(tx, {
+          action: 'INVOICE_GIFT_PHOTO_SET',
+          entityType: 'Invoice',
+          entityId: id,
+          branchId: current.branchId,
+          newValue: { fileName: query.fileName, sizeBytes: bytes.length },
+        });
+        return toInvoiceDto(await this.reload(tx, id), auth);
+      });
+      if (previousKey) await this.dropGiftObject(previousKey);
+      return result;
+    } catch (error) {
+      if (stored) await this.storage.delete(objectKey).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async removeGiftPhoto(auth: AuthContext, id: string): Promise<Invoice> {
+    let removedKey: string | null = null;
+    const result = await this.transactions.run(async (tx) => {
+      const current = await this.lock(tx, id);
+      this.assertDraft(current, 'edited');
+      if (!current.giftPhotoKey) throw new NotFoundError('Gift photo');
+      removedKey = current.giftPhotoKey;
+      await tx.invoice.update({
+        where: { id },
+        data: { ...this.noGiftPhoto(), updatedBy: auth.userId },
+      });
+      await this.audit.record(tx, {
+        action: 'INVOICE_GIFT_PHOTO_REMOVED',
+        entityType: 'Invoice',
+        entityId: id,
+        branchId: current.branchId,
+        oldValue: { fileName: current.giftPhotoFileName },
+      });
+      return toInvoiceDto(await this.reload(tx, id), auth);
+    });
+    if (removedKey) await this.dropGiftObject(removedKey);
+    return result;
+  }
+
+  async giftPhotoFile(
+    id: string,
+  ): Promise<{ body: Buffer; contentType: string; fileName: string }> {
+    const row = await this.transactions.run((tx) =>
+      tx.invoice.findUnique({
+        where: { id },
+        select: { giftPhotoKey: true, giftPhotoMime: true, giftPhotoFileName: true },
+      }),
+    );
+    if (!row?.giftPhotoKey || !row.giftPhotoMime || !row.giftPhotoFileName)
+      throw new NotFoundError('Gift photo');
+    const object = await this.storage.get(row.giftPhotoKey);
+    if (!object) throw new NotFoundError('The stored file');
+    return { body: object.body, contentType: row.giftPhotoMime, fileName: row.giftPhotoFileName };
+  }
+
+  /** The commission columns written from what was agreed. Without a broker or an agreement they are all empty. */
+  private commissionColumns(input: Pick<BodyInput, 'commission'>): {
+    commissionType: string | null;
+    commissionAmount: string | null;
+    giftName: string | null;
+  } {
+    const agreed = input.commission;
+    return {
+      commissionType: agreed?.type ?? null,
+      commissionAmount: agreed && agreed.type !== 'NONE' ? (agreed.amount ?? null) : null,
+      giftName: agreed?.type === 'GIFT' ? (agreed.giftName ?? null) : null,
+    };
+  }
+
+  private noGiftPhoto(): {
+    giftPhotoKey: null;
+    giftPhotoFileName: null;
+    giftPhotoMime: null;
+    giftPhotoSize: null;
+  } {
+    return {
+      giftPhotoKey: null,
+      giftPhotoFileName: null,
+      giftPhotoMime: null,
+      giftPhotoSize: null,
+    };
+  }
+
+  /** Deletes a gift photo's file once nothing refers to it (a reissued draft and its cancelled invoice share one). */
+  private async dropGiftObject(key: string): Promise<void> {
+    const used = await this.transactions.run(async (tx) => {
+      const invoices = await tx.invoice.count({ where: { giftPhotoKey: key } });
+      const commissions = await tx.commission.count({ where: { giftPhotoKey: key } });
+      return invoices + commissions;
+    });
+    if (used === 0) await this.storage.delete(key).catch(() => undefined);
   }
 
   // ---------- issuing ----------
@@ -252,6 +429,7 @@ export class BillingService {
           type: quotation.type as InvoiceTypeName,
           dueDate: input.dueDate,
           brokerId: quotation.brokerId,
+          commission: null,
           lines: lines.map((line) => ({
             itemId: line.itemId,
             qty: line.qty,
@@ -270,7 +448,7 @@ export class BillingService {
         branchId: quotation.branchId,
         newValue: { quotationId: quotation.id, quotationNo: quotation.quotationNo },
       });
-      return toInvoiceDto(draft);
+      return toInvoiceDto(draft, auth);
     });
   }
 
@@ -381,7 +559,7 @@ export class BillingService {
           issuedBy: auth.userId,
         },
       });
-      return toInvoiceDto(row);
+      return toInvoiceDto(row, auth);
     });
   }
 
@@ -391,7 +569,7 @@ export class BillingService {
     const input = CancelInvoiceRequestSchema.parse(body);
     return this.transactions.run(async (tx) => {
       const row = await this.cancelInTx(tx, auth, id, input.rowVersion, input.reason);
-      return toInvoiceDto(row);
+      return toInvoiceDto(row, auth);
     });
   }
 
@@ -400,6 +578,7 @@ export class BillingService {
     const input = ReissueInvoiceRequestSchema.parse(body);
     return this.transactions.run(async (tx) => {
       const cancelled = await this.cancelInTx(tx, auth, id, input.rowVersion, input.reason);
+      const reissueBrokerId = await this.commissions.usableOrNull(tx, cancelled.brokerId);
       const draft = await this.insertDraft(
         tx,
         auth,
@@ -408,7 +587,17 @@ export class BillingService {
           customerId: cancelled.customerId,
           type: cancelled.type as InvoiceTypeName,
           dueDate: null,
-          brokerId: await this.commissions.usableOrNull(tx, cancelled.brokerId),
+          brokerId: reissueBrokerId,
+          commission:
+            reissueBrokerId !== null && cancelled.commissionType
+              ? {
+                  type: cancelled.commissionType as 'NONE' | 'FIXED' | 'GIFT',
+                  ...(cancelled.commissionAmount
+                    ? { amount: money(cancelled.commissionAmount) }
+                    : {}),
+                  ...(cancelled.giftName ? { giftName: cancelled.giftName } : {}),
+                }
+              : null,
           lines: cancelled.invoiceLines.map((line) => ({
             itemId: line.itemId,
             qty: line.qty,
@@ -427,7 +616,19 @@ export class BillingService {
         branchId: cancelled.branchId,
         newValue: { replaces: cancelled.invoiceNo, reason: input.reason },
       });
-      return toInvoiceDto(draft);
+      if (cancelled.giftPhotoKey && draft.commissionType === 'GIFT') {
+        await tx.invoice.update({
+          where: { id: draft.id },
+          data: {
+            giftPhotoKey: cancelled.giftPhotoKey,
+            giftPhotoFileName: cancelled.giftPhotoFileName,
+            giftPhotoMime: cancelled.giftPhotoMime,
+            giftPhotoSize: cancelled.giftPhotoSize,
+          },
+        });
+        return toInvoiceDto(await this.reload(tx, draft.id), auth);
+      }
+      return toInvoiceDto(draft, auth);
     });
   }
 
@@ -797,6 +998,8 @@ export class BillingService {
         sgstAmount: calc.sgst,
         igstAmount: calc.igst,
         amount: calc.amount,
+        unitCostActual: line.item.actualPurchasePrice,
+        unitCostDisplay: line.item.displayPurchasePrice,
         createdBy: userId,
         updatedBy: userId,
       };
@@ -846,6 +1049,7 @@ export class BillingService {
         customerId: input.customerId,
         type: input.type,
         brokerId: input.brokerId,
+        ...this.commissionColumns(input),
         status: 'DRAFT',
         dueDate: input.dueDate ? parseIsoDate(input.dueDate) : null,
         replacesInvoiceId,

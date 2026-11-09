@@ -75,3 +75,7 @@ A follow-up is **overdue** when it is not done and its time has passed, **today*
 `POST /followups/:id/reschedule` (`leads.manage`) moves a follow-up that is still waiting to another time (not in the past, not the same time, with a reason and the row version). Each move is counted (`rescheduledCount`) and audited with the old and new times. A completed follow-up, or one whose lead is closed, cannot be moved. The database refuses a time change that is not counted, and completing and moving at once.
 
 `/lead-sources` lists every source with its lead count (`leads.view`), and managers (`leads.manage_sources`) add (code in capitals, unique name), rename and switch sources on or off. Sources are never deleted, a switched-off source cannot be used for new leads (existing leads keep it), and at least one must stay on. The Leads page has a **Lead sources** tab for those who may manage them.
+
+## Age (chunk 5)
+
+A lead can have an optional age in whole years (1 to 120), entered in the lead form and shown on the lead. Leave it empty if it is not known. Clearing it on an edit removes it. The age is not copied to the customer when the lead is converted.

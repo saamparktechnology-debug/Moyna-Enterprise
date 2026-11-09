@@ -1,6 +1,7 @@
+//apps/web/src/features/payments/payments.test.tsx
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentSummarySchema } from '@erp/contracts';
 import type {
   CustomerDue,
@@ -761,5 +762,35 @@ describe("refunding a customer's credit", () => {
     const book = await screen.findByRole('table', { name: 'Customer ledger' });
     expect(within(book).getAllByRole('row')[1]).toHaveTextContent('Refund paid');
     expect(within(book).getAllByRole('row')[1]).toHaveTextContent('HQRFD/2627/00001');
+  });
+});
+
+describe('the receipt of a payment', () => {
+  const create = vi.fn(() => 'blob:receipt');
+  beforeEach(() => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('can be viewed and printed from the payment', async () => {
+    const { calls } = routeFetch(
+      handlers(MANAGER, {
+        'GET /api/payments/pay-1/receipt': () =>
+          new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }),
+      }),
+    );
+    renderApp('/payments');
+    await tab('Payments');
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Open receipt HQRCT/2627/00001' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'View receipt' }));
+    const preview = await within(dialog).findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByTitle('Receipt HQRCT/2627/00001')).toHaveAttribute(
+      'src',
+      'blob:receipt',
+    );
+    expect(calls.some((c) => c.key === 'GET /api/payments/pay-1/receipt')).toBe(true);
   });
 });

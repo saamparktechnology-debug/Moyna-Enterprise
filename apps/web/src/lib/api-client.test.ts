@@ -1,3 +1,4 @@
+//apps/web/src/lib/api-client.test.ts
 import { HealthResponseSchema } from '@erp/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiClient } from './api-client';

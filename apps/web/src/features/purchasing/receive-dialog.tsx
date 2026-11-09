@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/receive-dialog.tsx
 import { useState } from 'react';
 import { ReceiveGoodsRequestSchema } from '@erp/contracts';
 import type { Item, PurchaseOrder, PurchaseOrderLine } from '@erp/contracts';

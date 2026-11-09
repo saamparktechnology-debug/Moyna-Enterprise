@@ -1,3 +1,4 @@
+//apps/web/src/features/search/use-search.ts
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { SEARCH_MIN_LENGTH } from '@erp/contracts';

@@ -1,3 +1,4 @@
+//apps\web\src\features\batteries\battery-install-dialog.tsx
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Battery, SerialUnit } from '@erp/contracts';

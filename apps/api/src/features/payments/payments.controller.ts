@@ -1,15 +1,19 @@
+//apps/api/src/features/payments/payments.controller.ts
 import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { PaymentListResponseSchema, PaymentSchema, toOpenApiSchema } from '@erp/contracts';
 import type { Payment, PaymentListResponse } from '@erp/contracts';
 import type { AuthContext } from '../auth/auth.types.js';
@@ -27,6 +31,23 @@ export class PaymentsController {
   @ApiOkResponse({ schema: toOpenApiSchema(PaymentListResponseSchema) })
   list(@Query() query: Record<string, unknown>): Promise<PaymentListResponse> {
     return this.payments.list(query);
+  }
+
+  /** The receipt for a payment, as a PDF to print and hand to the customer. */
+  @RequirePermission('payments.view')
+  @Get(':id/receipt')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async receipt(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const file = await this.payments.receipt(id);
+    response
+      .status(200)
+      .type('application/pdf')
+      .setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`)
+      .send(file.body);
   }
 
   @RequirePermission('payments.view')

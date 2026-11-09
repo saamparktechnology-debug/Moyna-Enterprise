@@ -1,3 +1,4 @@
+//apps/api/src/features/reports/reports.controller.ts
 import { Controller, Get, Header, Inject, Param, Query, Res } from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ReportCatalogSchema, ReportResponseSchema, toOpenApiSchema } from '@erp/contracts';

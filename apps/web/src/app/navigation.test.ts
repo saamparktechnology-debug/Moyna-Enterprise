@@ -1,3 +1,4 @@
+//apps/web/src/app/navigation.test.ts
 import { describe, expect, it } from 'vitest';
 import {
   NAV_GROUPS,

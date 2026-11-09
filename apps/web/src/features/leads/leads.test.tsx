@@ -1,3 +1,4 @@
+//apps/web/src/features/leads/leads.test.tsx
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
@@ -663,5 +664,92 @@ describe('who sees what', () => {
   it('lists Leads in the menu for people who may view them', async () => {
     open(handlers(VIEWER));
     expect(await screen.findByRole('link', { name: 'Leads' })).toBeInTheDocument();
+  });
+});
+
+describe('the age of a lead', () => {
+  const fillNew = async (age?: string) => {
+    await userEvent.click(await screen.findByRole('button', { name: 'New lead' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'Asha Verma');
+    await userEvent.type(within(dialog).getByLabelText('Phone'), '9000000077');
+    await userEvent.selectOptions(
+      await within(dialog)
+        .findByRole('option', { name: 'Phone enquiry' })
+        .then((o) => o.closest('select') as HTMLSelectElement),
+      'PHONE',
+    );
+    if (age !== undefined) await userEvent.type(within(dialog).getByLabelText('Age'), age);
+    return dialog;
+  };
+  const created = {
+    'POST /api/leads': () => jsonResponse(lead({ name: 'Asha Verma', age: 34 }), 201),
+  };
+
+  it('is sent as a whole number of years when it is typed in the lead form', async () => {
+    const { calls } = open(handlers(WORKER, lead(), created));
+    const dialog = await fillNew('34');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add lead' }));
+    expect(await screen.findByText('Lead Asha Verma added')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/leads')[0]?.body).toMatchObject({ age: 34 });
+  });
+
+  it('is optional: nothing typed sends no age', async () => {
+    const { calls } = open(handlers(WORKER, lead(), created));
+    const dialog = await fillNew();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add lead' }));
+    await screen.findByText('Lead Asha Verma added');
+    expect(sent(calls, 'POST /api/leads')[0]?.body).toMatchObject({ age: null });
+  });
+
+  it('is checked before anything is sent', async () => {
+    const { calls } = open(handlers(WORKER, lead(), created));
+    const dialog = await fillNew('0');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add lead' }));
+    expect(await within(dialog).findByText('Enter an age from 1 to 120')).toBeInTheDocument();
+    const age = within(dialog).getByLabelText('Age');
+    for (const bad of ['121', '12.5', 'abc']) {
+      await userEvent.clear(age);
+      await userEvent.type(age, bad);
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Add lead' }));
+      expect(
+        await within(dialog).findByText(/Enter an age|whole number|Enter the age/),
+      ).toBeInTheDocument();
+    }
+    expect(sent(calls, 'POST /api/leads')).toHaveLength(0);
+  });
+
+  it('is shown on the lead, with a dash when it is not known', async () => {
+    open(handlers(VIEWER, lead({ age: 41 })));
+    const dialog = await openLead();
+    const label = await within(dialog).findByText('Age');
+    expect(label.nextSibling).toHaveTextContent('41');
+  });
+
+  it('shows a dash for a lead with no age', async () => {
+    open(handlers(VIEWER, lead({ age: null })));
+    const dialog = await openLead();
+    expect((await within(dialog).findByText('Age')).nextSibling).toHaveTextContent('—');
+  });
+
+  it('can be changed or cleared when the lead is edited', async () => {
+    const { calls } = open(
+      handlers(WORKER, lead({ age: 41 }), {
+        [`PATCH /api/leads/${LEAD_ID}`]: () => jsonResponse(lead({ age: 42 })),
+      }),
+    );
+    const dialog = await openLead();
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Edit details' }));
+    const form = await screen.findByRole('dialog', { name: 'Edit lead' });
+    const age = within(form).getByLabelText('Age');
+    expect(age).toHaveValue('41');
+    await userEvent.clear(age);
+    await userEvent.type(age, '42');
+    await userEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
+    await screen.findByText('Ravi Kumar updated');
+    expect(sent(calls, `PATCH /api/leads/${LEAD_ID}`)[0]?.body).toMatchObject({
+      age: 42,
+      rowVersion: 4,
+    });
   });
 });

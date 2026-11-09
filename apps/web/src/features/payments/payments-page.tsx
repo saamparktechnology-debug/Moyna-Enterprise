@@ -1,3 +1,4 @@
+//apps/web/src/features/payments/payments-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DUE_SCOPES, PAYMENT_STATUSES } from '@erp/contracts';

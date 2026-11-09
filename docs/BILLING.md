@@ -112,3 +112,7 @@ A vehicle sold on an invoice can be exchanged for another (module 4.12). While a
 ## Credit notes: batteries and PDF
 
 Approving a credit note for a vehicle also returns the **batteries fitted in it**, as returned goods with their warranty cleared, traced to the credit note (`SALE_RETURN`). `GET /credit-notes/:id/pdf` gives the credit note as a PDF (same permission as reading it). A waiting or rejected credit note says on the page that it is not valid, and a non-GST one carries no GSTIN.
+
+## Sale history filters (chunk 3)
+
+The invoice list can be filtered by group (a top-level item category, with everything under it), by product category, and by broker. The filters combine with status, kind, customer, branch and dates. A group or category filter keeps the invoices that sold at least one item from it.

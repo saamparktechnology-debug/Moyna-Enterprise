@@ -1,3 +1,4 @@
+//apps\api\src\features\hr\hr.module.ts
 import { Module } from '@nestjs/common';
 import { AttendanceService } from './attendance.service.js';
 import {

@@ -1,3 +1,4 @@
+//apps/api/test/support/load-root-env.ts
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 

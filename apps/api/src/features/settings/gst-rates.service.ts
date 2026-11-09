@@ -1,3 +1,4 @@
+//apps/api/src/features/settings/gst-rates.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import { CreateGstRateRequestSchema, UpdateGstRateRequestSchema } from '@erp/contracts';
 import type { GstRateAdmin } from '@erp/contracts';

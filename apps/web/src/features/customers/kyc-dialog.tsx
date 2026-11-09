@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+//apps/web/src/features/customers/kyc-dialog.tsx
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { KYC_ALLOWED_TYPES, KYC_MAX_BYTES, documentNumberProblem } from '@erp/contracts';
 import type { Customer, KycDocument } from '@erp/contracts';
@@ -6,13 +7,18 @@ import { Alert } from '@/components/alert';
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { StatusBadge } from '@/components/status-badge';
 import { Select } from '@/components/select-field';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/features/auth/auth-provider';
 import { ApiError } from '@/lib/api-client';
 import { KYC_LABELS, formatSize } from './customers-shared';
 import { useKyc, useKycDocumentTypes, useKycMutations } from './use-customers';
+
+interface Preview {
+  document: KycDocument;
+  url: string;
+}
 
 interface KycDialogProps {
   customer: Customer;
@@ -40,6 +46,21 @@ export function KycDialog({ customer, onClose }: KycDialogProps) {
   const [rejecting, setRejecting] = useState<KycDocument | null>(null);
   const [reason, setReason] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const previewUrl = useRef<string | null>(null);
+
+  // A preview holds the file in memory until it is closed, so let go of it when the dialog goes away too.
+  useEffect(
+    () => () => {
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    },
+    [],
+  );
+  const closePreview = () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current = null;
+    setPreview(null);
+  };
 
   const canUpload = can('kyc.upload');
   const canView = can('kyc.view');
@@ -81,7 +102,10 @@ export function KycDialog({ customer, onClose }: KycDialogProps) {
     setProblem(null);
     try {
       const blob = await download.mutateAsync(document.id);
-      window.open(URL.createObjectURL(blob), '_blank', 'noopener');
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      const url = URL.createObjectURL(blob);
+      previewUrl.current = url;
+      setPreview({ document, url });
     } catch (error) {
       setProblem(problemOf(error));
     }
@@ -249,6 +273,45 @@ export function KycDialog({ customer, onClose }: KycDialogProps) {
                 ]}
               />
             )}
+
+            {preview ? (
+              <section
+                aria-label="Document preview"
+                className="mt-4 space-y-2 rounded-md border p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    {preview.document.docTypeName} · {preview.document.fileName}
+                  </p>
+                  <div className="flex gap-2">
+                    <a
+                      href={preview.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={buttonVariants({ variant: 'secondary', size: 'sm' })}
+                    >
+                      Open in new tab
+                    </a>
+                    <Button variant="secondary" size="sm" onClick={closePreview}>
+                      Close preview
+                    </Button>
+                  </div>
+                </div>
+                {preview.document.mimeType.startsWith('image/') ? (
+                  <img
+                    src={preview.url}
+                    alt={`${preview.document.docTypeName} ${preview.document.fileName}`}
+                    className="max-h-[60vh] w-full rounded object-contain"
+                  />
+                ) : (
+                  <iframe
+                    src={preview.url}
+                    title={`${preview.document.docTypeName} ${preview.document.fileName}`}
+                    className="h-[60vh] w-full rounded border"
+                  />
+                )}
+              </section>
+            ) : null}
 
             {rejecting ? (
               <form

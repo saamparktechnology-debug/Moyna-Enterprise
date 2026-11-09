@@ -1,3 +1,4 @@
+//apps/web/src/features/brokers/brokers-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { COMMISSION_STATUSES } from '@erp/contracts';
@@ -17,7 +18,8 @@ import { isFiltered, useListParams, useSearchBox } from '@/lib/use-list-params';
 import { BrokerDetailDialog } from './broker-detail-dialog';
 import { BrokerFormDialog } from './broker-form-dialog';
 import { BrokerLedgerDialog } from './broker-ledger-dialog';
-import { COMMISSION_STATUS_TEXT, ruleText } from './brokers-shared';
+import { COMMISSION_STATUS_TEXT, commissionBasis, ruleText } from './brokers-shared';
+import { GiftPhotoDialog } from './gift-photo-dialog';
 import { PayoutDialog } from './payout-dialog';
 import { useBrokers, useCommissions } from './use-brokers';
 
@@ -240,6 +242,7 @@ function CommissionsTab({ onPay }: { onPay: (commissions: Commission[]) => void 
   const [params, set] = useListParams(COMMISSION_DEFAULTS, 'comm');
   const [searchText, setSearchText, clearSearchText] = useSearchBox(params, set);
   const [chosen, setChosen] = useState<Commission[]>([]);
+  const [giftFor, setGiftFor] = useState<Commission | null>(null);
   const status = params.filters['status'] ?? 'PAYABLE';
   const query = useCommissions({
     page: params.page,
@@ -304,9 +307,18 @@ function CommissionsTab({ onPay }: { onPay: (commissions: Commission[]) => void 
         <>
           {row.original.amount}
           <span className="block text-xs text-muted-foreground">
-            {ruleText({ type: row.original.ruleType, value: row.original.ruleValue })} of{' '}
-            {row.original.baseAmount}
+            {commissionBasis(row.original)}
           </span>
+          {row.original.hasGiftPhoto ? (
+            <Button
+              variant="link"
+              size="sm"
+              aria-label={`View gift photo for ${row.original.invoiceNo ?? 'the invoice'}`}
+              onClick={() => setGiftFor(row.original)}
+            >
+              View gift photo
+            </Button>
+          ) : null}
         </>
       ),
     },
@@ -416,6 +428,13 @@ function CommissionsTab({ onPay }: { onPay: (commissions: Commission[]) => void 
         onSortChange={set.setSort}
         columnVisibility
       />
+      {giftFor ? (
+        <GiftPhotoDialog
+          commissionId={giftFor.id}
+          giftName={giftFor.giftName ?? ''}
+          onClose={() => setGiftFor(null)}
+        />
+      ) : null}
     </>
   );
 }

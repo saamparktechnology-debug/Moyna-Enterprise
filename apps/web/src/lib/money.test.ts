@@ -1,3 +1,4 @@
+//apps/web/src/lib/money.test.ts
 import { describe, expect, it } from 'vitest';
 import { finishMoney, formatMoney, sanitizeMoney } from './money';
 

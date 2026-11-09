@@ -1,3 +1,4 @@
+//apps\api\src\features\hr\hr.shared.ts
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
 

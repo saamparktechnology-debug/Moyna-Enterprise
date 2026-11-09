@@ -1,3 +1,4 @@
+//apps/web/src/features/leads/lead-detail-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { StatusBadge } from '@/components/status-badge';
 import { useState } from 'react';
@@ -85,6 +86,8 @@ export function LeadDetailDialog({ leadId, onClose, onEdit, onConverted }: Props
             <dl className="mt-4 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
               <dt className="text-muted-foreground">Came from</dt>
               <dd>{lead.sourceName}</dd>
+              <dt className="text-muted-foreground">Age</dt>
+              <dd>{lead.age ?? '—'}</dd>
               <dt className="text-muted-foreground">What they want</dt>
               <dd>{lead.interest ?? '—'}</dd>
               <dt className="text-muted-foreground">Looked after by</dt>

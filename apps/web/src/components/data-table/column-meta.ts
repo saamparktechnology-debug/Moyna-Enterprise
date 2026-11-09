@@ -1,3 +1,4 @@
+//apps/web/src/components/data-table/column-meta.ts
 import type { ColumnDef, RowData } from '@tanstack/react-table';
 
 declare module '@tanstack/react-table' {

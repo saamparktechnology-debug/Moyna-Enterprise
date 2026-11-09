@@ -34,6 +34,11 @@ export const HsnCodeValueSchema = z
   .string()
   .trim()
   .regex(/^\d{4,8}$/, 'An HSN code has 4 to 8 digits');
+export const PurchasePriceSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{1,12}(\.\d{1,2})?$/, 'Enter an amount such as 1250 or 1250.50');
+
 export const ReorderLevelSchema = z
   .number('Enter a whole number')
   .int('Enter a whole number')
@@ -52,10 +57,18 @@ export const CreateItemRequestSchema = z
     isSerialized: z.boolean().default(false),
     barcode: BarcodeSchema.optional(),
     generateBarcode: z.boolean().default(false),
+    /** The real purchase price. Only a Super Admin may send it. */
+    actualPurchasePrice: PurchasePriceSchema.nullable().optional(),
+    /** The price shown to Admin and staff in its place. Only a Super Admin may send it. */
+    displayPurchasePrice: PurchasePriceSchema.nullable().optional(),
   })
   .refine((value) => !(value.barcode && value.generateBarcode), {
     path: ['barcode'],
     message: 'Enter a barcode or ask for one to be generated, not both',
+  })
+  .refine((value) => !value.displayPurchasePrice || !!value.actualPurchasePrice, {
+    path: ['displayPurchasePrice'],
+    message: 'Enter the actual purchase price first',
   });
 export type CreateItemRequest = z.input<typeof CreateItemRequestSchema>;
 
@@ -68,10 +81,17 @@ export const UpdateItemRequestSchema = z
     taxRate: GstRateValueSchema.nullable().optional(),
     reorderLevel: ReorderLevelSchema.optional(),
     isSerialized: z.boolean().optional(),
+    /** Only a Super Admin may send either price. `null` clears it. */
+    actualPurchasePrice: PurchasePriceSchema.nullable().optional(),
+    displayPurchasePrice: PurchasePriceSchema.nullable().optional(),
     rowVersion: z.number().int().min(1),
   })
   .refine((value) => Object.keys(value).some((key) => key !== 'rowVersion'), {
     message: 'Change at least one field',
+  })
+  .refine((value) => !(value.actualPurchasePrice === null && !!value.displayPurchasePrice), {
+    path: ['displayPurchasePrice'],
+    message: 'Enter the actual purchase price first',
   });
 export type UpdateItemRequest = z.infer<typeof UpdateItemRequestSchema>;
 
@@ -98,6 +118,10 @@ export const ItemSchema = z.object({
   reorderLevel: z.number().int(),
   isSerialized: z.boolean(),
   isActive: z.boolean(),
+  /** The real purchase price. Filled in only for a Super Admin; everyone else gets `null`. */
+  actualPurchasePrice: z.string().nullable().optional(),
+  /** The purchase price Admin and staff are shown. A Super Admin sees it next to the real one. */
+  displayPurchasePrice: z.string().nullable().optional(),
   barcodes: z.array(ItemBarcodeSchema),
   rowVersion: z.number().int(),
   createdAt: z.string(),

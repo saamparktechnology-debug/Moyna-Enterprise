@@ -1,3 +1,4 @@
+//apps/web/src/features/billing/credit-note-dialogs.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { useState } from 'react';
 import type { CreditNote } from '@erp/contracts';

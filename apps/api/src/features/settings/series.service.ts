@@ -1,3 +1,4 @@
+//apps/api/src/features/settings/series.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import {
   AdvanceSeriesRequestSchema,

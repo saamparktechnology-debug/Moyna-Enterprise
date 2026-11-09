@@ -1,3 +1,4 @@
+//apps/web/src/lib/use-media-query.ts
 import { useEffect, useState } from 'react';
 
 /** Follows a CSS media query. Where the browser cannot answer (older test environments) it uses `fallback`. */

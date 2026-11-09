@@ -1,3 +1,4 @@
+//apps/web/src/features/dashboard/dashboard-page.tsx
 import { lazy, Suspense, useState } from 'react';
 import { DASHBOARD_MAX_RANGE_DAYS, daysBetween, todayInIndia } from '@erp/contracts';
 import type { BranchDashboard, CompanyDashboard } from '@erp/contracts';
@@ -112,6 +113,11 @@ function CompanyView({ data, onOpen }: { data: CompanyDashboard; onOpen: (id: st
           label="Lead conversion"
           value={percent(data.leads.conversionRate)}
           hint={`${data.leads.won} won`}
+        />
+        <Stat
+          label="Follow-ups due today"
+          value={String(data.followups.dueToday)}
+          tone={data.followups.dueToday > 0 ? 'warn' : 'normal'}
         />
         <Stat label="Commission payable" value={formatRupees(data.commissions.payable)} />
         <Stat label="Commission paid" value={formatRupees(data.commissions.paid)} />
@@ -315,9 +321,9 @@ function BranchView({ data }: { data: BranchDashboard }) {
           tone={data.followups.overdue > 0 ? 'warn' : 'normal'}
         />
         <Stat
-          label="Follow-ups today"
-          value={String(data.followups.today)}
-          hint={`${data.followups.upcoming} later`}
+          label="Follow-ups due today"
+          value={String(data.followups.dueToday)}
+          hint={`${data.followups.today} still to come · ${data.followups.upcoming} later`}
         />
       </StatGrid>
       <StatGrid title="Leads and batteries">

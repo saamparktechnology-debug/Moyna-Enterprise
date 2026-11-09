@@ -1,3 +1,4 @@
+//apps/api/test/support/zip-reader.ts
 import { crc32, inflateRawSync } from 'node:zlib';
 
 /** Reads every file out of a zip made by the report exporter, checking each file's size and checksum. */

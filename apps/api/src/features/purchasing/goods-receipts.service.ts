@@ -1,3 +1,4 @@
+//apps/api/src/features/purchasing/goods-receipts.service.ts
 import { GOODS_RECEIPT_SORT_FIELDS } from '@erp/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import { GoodsReceiptListQuerySchema, ReceiveGoodsRequestSchema } from '@erp/contracts';

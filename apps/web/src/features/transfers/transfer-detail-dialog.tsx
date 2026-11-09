@@ -1,3 +1,4 @@
+//apps/web/src/features/transfers/transfer-detail-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { useState } from 'react';
 import type { Transfer } from '@erp/contracts';

@@ -1,3 +1,4 @@
+//apps/api/test/integration/migrations.int.test.ts
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -154,6 +155,7 @@ describe('migrations', () => {
       '20261007002400_search_indexes',
       '20261007002500_fix_lead_day',
       '20261007002600_app_settings',
+      '20261007002700_purchase_price_declaration',
     ]);
   });
 

@@ -1,3 +1,4 @@
+//apps/api/test/integration/prisma-shutdown.int.test.ts
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../src/common/prisma/prisma.service.js';
 import { createTestApp } from '../support/create-test-app.js';

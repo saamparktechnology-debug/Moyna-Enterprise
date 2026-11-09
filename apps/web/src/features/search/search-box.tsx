@@ -1,3 +1,4 @@
+//apps/web/src/features/search/search-box.tsx
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SEARCH_MIN_LENGTH, SEARCH_TYPE_LABELS, SEARCH_TYPES } from '@erp/contracts';

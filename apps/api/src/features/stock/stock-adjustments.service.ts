@@ -1,3 +1,4 @@
+//apps/api/src/features/stock/stock-adjustments.service.ts
 import { ADJUSTMENT_SORT_FIELDS } from '@erp/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import {

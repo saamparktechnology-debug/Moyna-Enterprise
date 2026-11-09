@@ -1,3 +1,4 @@
+//apps/web/src/features/leads/leads-shared.ts
 import type { FollowupStatusName, LeadStageName } from '@erp/contracts';
 
 export const STAGE_TEXT: Record<LeadStageName, string> = {

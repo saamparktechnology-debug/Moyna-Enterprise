@@ -1,3 +1,4 @@
+//apps/web/src/features/settings/audit-section.tsx
 import { useState } from 'react';
 import type { AuditEntry } from '@erp/contracts';
 import type { ColumnDef } from '@tanstack/react-table';

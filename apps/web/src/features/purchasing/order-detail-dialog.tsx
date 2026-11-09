@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/order-detail-dialog.tsx
 import { useState } from 'react';
 import type { PurchaseOrder } from '@erp/contracts';
 import { Alert } from '@/components/alert';

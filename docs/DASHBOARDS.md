@@ -45,3 +45,7 @@ Reports (module 5.4) will read the same views, so a dashboard figure and its rep
 - Reversed payments are left out of "collected" whatever date they were reversed, matching how dues treat them.
 - Refunds of customer credit are not netted from "collected".
 - Charts use Recharts (approved stack, first use).
+
+## Follow-ups due today (chunk 4)
+
+Both dashboards show **Follow-ups due today**: open lead follow-ups due at any time today (India time), including ones whose time has already passed. On the branch dashboard the hint also gives how many are still to come today and how many are later; "Follow-ups overdue" is unchanged. The company figure is the sum of the branch rows.

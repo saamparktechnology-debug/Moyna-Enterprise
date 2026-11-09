@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/discrepancies-tab.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DISCREPANCY_TYPES } from '@erp/contracts';

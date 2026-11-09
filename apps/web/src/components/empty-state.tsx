@@ -1,3 +1,4 @@
+//apps/web/src/components/empty-state.tsx
 import { Inbox } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';

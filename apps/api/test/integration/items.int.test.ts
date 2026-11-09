@@ -1,3 +1,4 @@
+//apps/api/test/integration/items.int.test.ts
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   GstRateListResponseSchema,
@@ -214,6 +215,11 @@ describe('items, barcodes and categories', () => {
     it('refuses references that do not exist or are inactive', async () => {
       const inactive = await owner.itemCategory.create({
         data: { name: unique('Retired'), isActive: false },
+      });
+      await owner.hsnCode.upsert({
+        where: { code: '99999999' },
+        update: { isActive: false },
+        create: { code: '99999999', description: 'Switched off for the test', isActive: false },
       });
       const response = await superAdmin.post(
         '/items',

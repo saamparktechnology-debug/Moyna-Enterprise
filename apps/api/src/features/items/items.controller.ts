@@ -1,3 +1,4 @@
+//apps/api/src/features/items/items.controller.ts
 import {
   Body,
   Controller,
@@ -31,15 +32,18 @@ export class ItemsController {
   @RequirePermission('items.view')
   @Get()
   @ApiOkResponse({ schema: toOpenApiSchema(ItemListResponseSchema) })
-  list(@Query() query: Record<string, unknown>): Promise<ItemListResponse> {
-    return this.items.list(query);
+  list(
+    @CurrentAuth() auth: AuthContext,
+    @Query() query: Record<string, unknown>,
+  ): Promise<ItemListResponse> {
+    return this.items.list(auth, query);
   }
 
   @RequirePermission('items.view')
   @Get('lookup')
   @ApiOkResponse({ schema: toOpenApiSchema(ItemSchema) })
-  lookup(@Query() query: Record<string, unknown>): Promise<Item> {
-    return this.items.lookup(query);
+  lookup(@CurrentAuth() auth: AuthContext, @Query() query: Record<string, unknown>): Promise<Item> {
+    return this.items.lookup(auth, query);
   }
 
   @RequirePermission('items.view')
@@ -53,8 +57,11 @@ export class ItemsController {
   @RequirePermission('items.view')
   @Get(':id')
   @ApiOkResponse({ schema: toOpenApiSchema(ItemSchema) })
-  get(@Param('id', new ParseUUIDPipe()) id: string): Promise<Item> {
-    return this.items.get(id);
+  get(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<Item> {
+    return this.items.get(auth, id);
   }
 
   @RequirePermission('items.manage')

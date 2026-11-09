@@ -1,3 +1,4 @@
+//apps/web/src/features/notifications/notifications-api.ts
 import {
   MarkAllReadResponseSchema,
   NotificationListResponseSchema,

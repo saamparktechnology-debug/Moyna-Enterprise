@@ -1,3 +1,4 @@
+//apps/web/src/components/data-table/data-table-column-visibility.tsx
 import { Columns3 } from 'lucide-react';
 import type { Table } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';

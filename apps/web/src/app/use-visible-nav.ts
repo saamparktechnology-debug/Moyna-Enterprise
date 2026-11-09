@@ -1,3 +1,4 @@
+//apps/web/src/app/use-visible-nav.ts
 import { useMemo } from 'react';
 import { useAuth } from '@/features/auth/auth-provider';
 import { NAV_GROUPS, canSeeNavItem } from './navigation';

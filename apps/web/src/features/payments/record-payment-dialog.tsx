@@ -1,3 +1,4 @@
+//apps/web/src/features/payments/record-payment-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { useRef, useState } from 'react';
 import { RecordPaymentRequestSchema, todayInIndia } from '@erp/contracts';

@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
+  Headers,
   HttpCode,
   Inject,
   Param,
@@ -38,8 +40,11 @@ export class BillingController {
   @RequirePermission('invoices.view')
   @Get()
   @ApiOkResponse({ schema: toOpenApiSchema(InvoiceListResponseSchema) })
-  list(@Query() query: Record<string, unknown>): Promise<InvoiceListResponse> {
-    return this.billing.list(query);
+  list(
+    @CurrentAuth() auth: AuthContext,
+    @Query() query: Record<string, unknown>,
+  ): Promise<InvoiceListResponse> {
+    return this.billing.list(auth, query);
   }
 
   /** Works out what an invoice would come to without saving anything, so the screen can show live totals. */
@@ -54,8 +59,11 @@ export class BillingController {
   @RequirePermission('invoices.view')
   @Get(':id')
   @ApiOkResponse({ schema: toOpenApiSchema(InvoiceSchema) })
-  get(@Param('id', new ParseUUIDPipe()) id: string): Promise<Invoice> {
-    return this.billing.get(id);
+  get(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<Invoice> {
+    return this.billing.get(auth, id);
   }
 
   /** What can still be credited on each line of the invoice. */
@@ -105,6 +113,46 @@ export class BillingController {
     @Body() body: unknown,
   ): Promise<Invoice> {
     return this.billing.updateDraft(auth, id, body);
+  }
+
+  /** The gift photo is sent as the request body (JPEG or PNG), with its file name in the query. Draft invoices only. */
+  @RequirePermission('invoices.create')
+  @Post(':id/gift-photo')
+  @ApiCreatedResponse({ schema: toOpenApiSchema(InvoiceSchema) })
+  setGiftPhoto(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query() query: Record<string, unknown>,
+    @Body() body: unknown,
+    @Headers('content-type') declaredType: string | undefined,
+  ): Promise<Invoice> {
+    return this.billing.setGiftPhoto(auth, id, { query, body, declaredType });
+  }
+
+  @RequirePermission('invoices.create')
+  @Delete(':id/gift-photo')
+  @ApiOkResponse({ schema: toOpenApiSchema(InvoiceSchema) })
+  removeGiftPhoto(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<Invoice> {
+    return this.billing.removeGiftPhoto(auth, id);
+  }
+
+  @RequirePermission('invoices.view')
+  @Get(':id/gift-photo')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async giftPhoto(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const file = await this.billing.giftPhotoFile(id);
+    response
+      .status(200)
+      .type(file.contentType)
+      .setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`)
+      .send(file.body);
   }
 
   @RequirePermission('invoices.create')

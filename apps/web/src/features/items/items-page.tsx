@@ -1,3 +1,4 @@
+//apps/web/src/features/items/items-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { Item } from '@erp/contracts';
@@ -33,8 +34,9 @@ const TRACKING_LABEL: Record<string, string> = {
 type FormTarget = { kind: 'create' } | { kind: 'edit'; item: Item } | null;
 
 export function ItemsPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canManage = can('items.manage');
+  const isSuperAdmin = user?.isSuperAdmin ?? false;
   const [params, set] = useListParams(DEFAULTS);
   const [searchText, setSearchText, clearSearchText] = useSearchBox(params, set);
   const [formTarget, setFormTarget] = useState<FormTarget>(null);
@@ -42,6 +44,7 @@ export function ItemsPage() {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [selected, setSelected] = useState<Map<string, Item>>(new Map());
+  const [labelTarget, setLabelTarget] = useState<Item | null>(null);
   const categories = useCategories();
   const categoryId = params.filters['category'] ?? '';
   const status = params.filters['status'] as ItemListParams['status'];
@@ -115,10 +118,35 @@ export function ItemsPage() {
     { accessorKey: 'categoryName', header: 'Category' },
     { accessorKey: 'unitCode', header: 'Unit' },
     {
+      id: 'hsn',
+      header: 'HSN',
+      cell: ({ row }) => row.original.hsnCode ?? '—',
+    },
+    {
       id: 'gst',
       header: 'GST',
       meta: { align: 'right' },
       cell: ({ row }) => (row.original.taxRate ? `${row.original.taxRate}%` : '—'),
+    },
+    {
+      id: 'purchasePrice',
+      header: 'Purchase price',
+      meta: { align: 'right', className: 'tabular' },
+      cell: ({ row }) => {
+        const item = row.original;
+        const own = isSuperAdmin ? item.actualPurchasePrice : item.displayPurchasePrice;
+        if (!own) return '—';
+        return (
+          <>
+            {own}
+            {isSuperAdmin && item.displayPurchasePrice ? (
+              <span className="block text-xs text-muted-foreground">
+                Shown: {item.displayPurchasePrice}
+              </span>
+            ) : null}
+          </>
+        );
+      },
     },
     {
       id: 'barcode',
@@ -146,8 +174,18 @@ export function ItemsPage() {
       header: actionsHeader,
       enableHiding: false,
       cell: ({ row }) => (
-        <Can permission="items.manage">
-          <RowActions>
+        <RowActions>
+          {row.original.barcodes.length > 0 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Print label for ${row.original.itemCode}`}
+              onClick={() => setLabelTarget(row.original)}
+            >
+              Print label
+            </Button>
+          ) : null}
+          <Can permission="items.manage">
             <Button
               variant="ghost"
               size="sm"
@@ -164,8 +202,8 @@ export function ItemsPage() {
             >
               {row.original.isActive ? 'Deactivate' : 'Reactivate'}
             </Button>
-          </RowActions>
-        </Can>
+          </Can>
+        </RowActions>
       ),
     },
   ];
@@ -314,6 +352,9 @@ export function ItemsPage() {
       {categoriesOpen ? <CategoriesDialog onClose={() => setCategoriesOpen(false)} /> : null}
       {labelsOpen ? (
         <LabelDialog items={[...selected.values()]} onClose={() => setLabelsOpen(false)} />
+      ) : null}
+      {labelTarget ? (
+        <LabelDialog items={[labelTarget]} autoPrepare onClose={() => setLabelTarget(null)} />
       ) : null}
     </PageContainer>
   );

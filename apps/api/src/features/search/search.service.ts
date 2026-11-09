@@ -1,3 +1,4 @@
+//apps/api/src/features/search/search.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import { SearchQuerySchema } from '@erp/contracts';
 import type { SearchResponse, SearchResult, SearchType } from '@erp/contracts';

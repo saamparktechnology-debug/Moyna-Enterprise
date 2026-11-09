@@ -1,12 +1,17 @@
 import { z } from 'zod';
 import { DateOnlySchema } from './battery-dates.js';
 import { MoneyAmountSchema } from './billing.js';
-import { PhoneSchema } from './customers.js';
+import { KycMimeSchema, PhoneSchema } from './customers.js';
 import { paginatedSchema, PaginationQuerySchema } from './pagination.js';
 
 export const COMMISSION_RULE_TYPES = ['PERCENT', 'FIXED'] as const;
 export const CommissionRuleTypeSchema = z.enum(COMMISSION_RULE_TYPES);
 export type CommissionRuleTypeName = z.infer<typeof CommissionRuleTypeSchema>;
+
+/** How a commission came about: from the broker's standing rule, or agreed on the invoice as an amount or a gift. */
+export const COMMISSION_KINDS = ['RULE', 'FIXED', 'GIFT'] as const;
+export const CommissionKindSchema = z.enum(COMMISSION_KINDS);
+export type CommissionKindName = z.infer<typeof CommissionKindSchema>;
 
 export const COMMISSION_STATUSES = ['PAYABLE', 'PAID', 'REVERSED'] as const;
 export const CommissionStatusSchema = z.enum(COMMISSION_STATUSES);
@@ -18,9 +23,16 @@ const BrokerNameSchema = z
   .min(2, 'Enter at least 2 characters')
   .max(120, 'Use at most 120 characters');
 
+export const BrokerAddressSchema = z
+  .string()
+  .trim()
+  .min(1, 'Enter the address')
+  .max(500, 'Use at most 500 characters');
+
 export const CreateBrokerRequestSchema = z.object({
   name: BrokerNameSchema,
   phone: PhoneSchema.nullable().default(null),
+  address: BrokerAddressSchema.nullable().default(null),
 });
 export type CreateBrokerRequest = z.input<typeof CreateBrokerRequestSchema>;
 
@@ -28,6 +40,7 @@ export const UpdateBrokerRequestSchema = z
   .object({
     name: BrokerNameSchema.optional(),
     phone: PhoneSchema.nullable().optional(),
+    address: BrokerAddressSchema.nullable().optional(),
     isActive: z.boolean().optional(),
     rowVersion: z.number().int().min(1),
   })
@@ -73,12 +86,45 @@ export const CommissionRuleSchema = z.object({
 });
 export type CommissionRule = z.infer<typeof CommissionRuleSchema>;
 
+export const BROKER_FILE_KINDS = ['PHOTO', 'DOCUMENT'] as const;
+export const BrokerFileKindSchema = z.enum(BROKER_FILE_KINDS);
+
+/** A photo or a document kept for a broker (an ID proof, an agreement). Documents may be PDF, JPEG or PNG; the photo only JPEG or PNG. */
+export const BrokerFileSchema = z.object({
+  id: z.string(),
+  kind: BrokerFileKindSchema,
+  label: z.string().nullable(),
+  fileName: z.string(),
+  mimeType: KycMimeSchema,
+  sizeBytes: z.number().int(),
+  uploadedAt: z.string(),
+});
+export type BrokerFile = z.infer<typeof BrokerFileSchema>;
+
+/** The file is sent as the request body; its name, and for a document what it is, are in the query. */
+export const BrokerFileUploadQuerySchema = z.object({
+  fileName: z
+    .string()
+    .trim()
+    .min(1, 'The file has no name')
+    .max(160, 'The file name is too long')
+    .refine(
+      (name) => ![...name].some((ch) => ch === '/' || ch === '\\' || ch.charCodeAt(0) < 32),
+      'The file name has characters that are not allowed',
+    ),
+  label: z.string().trim().min(1).max(80, 'Use at most 80 characters').optional(),
+});
+export type BrokerFileUploadQuery = z.infer<typeof BrokerFileUploadQuerySchema>;
+
 export const BrokerSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
   phone: z.string().nullable(),
+  address: z.string().nullable().optional(),
+  /** True when a photo is on file. */
+  hasPhoto: z.boolean().optional(),
   isActive: z.boolean(),
-  /** The rule in force, or null when the broker has none and so cannot be put on an invoice. */
+  /** The standing rule in force, if any. A rule is no longer needed to put a broker on an invoice: commission is agreed on the invoice. */
   activeRule: z.object({ type: CommissionRuleTypeSchema, value: z.string() }).nullable(),
   /** Commission still to be paid to the broker, after credit notes. */
   payable: z.string(),
@@ -91,6 +137,8 @@ export type BrokerSummary = z.infer<typeof BrokerSummarySchema>;
 export const BrokerSchema = BrokerSummarySchema.extend({
   rowVersion: z.number().int(),
   rules: z.array(CommissionRuleSchema),
+  photo: BrokerFileSchema.nullable().optional(),
+  documents: z.array(BrokerFileSchema).optional(),
 });
 export type Broker = z.infer<typeof BrokerSchema>;
 
@@ -113,8 +161,13 @@ export const CommissionSchema = z.object({
   invoiceId: z.string(),
   invoiceNo: z.string().nullable(),
   customerName: z.string(),
-  ruleType: CommissionRuleTypeSchema,
-  ruleValue: z.string(),
+  /** `RULE`: worked out from the broker's rule. `FIXED`: an amount agreed on the invoice. `GIFT`: a gift agreed on the invoice, worth `amount`. */
+  kind: CommissionKindSchema.optional(),
+  /** The rule the commission was worked out on; `null` when it was agreed on the invoice. */
+  ruleType: CommissionRuleTypeSchema.nullable(),
+  ruleValue: z.string().nullable(),
+  giftName: z.string().nullable().optional(),
+  hasGiftPhoto: z.boolean().optional(),
   /** The invoice's taxable value, which the commission was worked out on. */
   baseAmount: z.string(),
   /** The commission when it was worked out. */

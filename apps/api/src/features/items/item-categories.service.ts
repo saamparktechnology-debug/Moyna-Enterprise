@@ -1,3 +1,4 @@
+//apps/api/src/features/items/item-categories.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import { CreateItemCategoryRequestSchema, UpdateItemCategoryRequestSchema } from '@erp/contracts';
 import type { ItemCategory } from '@erp/contracts';

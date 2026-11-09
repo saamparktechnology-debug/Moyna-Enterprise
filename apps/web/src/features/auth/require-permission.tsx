@@ -1,3 +1,4 @@
+//apps/web/src/features/auth/require-permission.tsx
 import type { ReactNode } from 'react';
 import { useAuth } from './auth-provider';
 

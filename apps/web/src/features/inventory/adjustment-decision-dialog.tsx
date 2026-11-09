@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/adjustment-decision-dialog.tsx
 import { useState } from 'react';
 import type { StockAdjustment } from '@erp/contracts';
 import { ConfirmDialog } from '@/components/confirm-dialog';

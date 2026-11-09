@@ -1,3 +1,4 @@
+//apps/api/src/features/notifications/notifications.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import { NotificationKindSchema, NotificationListQuerySchema } from '@erp/contracts';
 import type {

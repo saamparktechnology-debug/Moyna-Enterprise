@@ -1,3 +1,4 @@
+//apps/api/src/features/purchasing/purchasing.module.ts
 import { Module } from '@nestjs/common';
 import { StockModule } from '../stock/stock.module.js';
 import { DiscrepanciesService } from './discrepancies.service.js';

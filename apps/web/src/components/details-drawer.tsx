@@ -1,3 +1,4 @@
+//apps/web/src/components/details-drawer.tsx
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';

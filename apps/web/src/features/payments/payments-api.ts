@@ -1,3 +1,4 @@
+//apps/web/src/features/payments/payments-api.ts
 import {
   CustomerCreditSchema,
   CustomerDueListResponseSchema,
@@ -76,6 +77,11 @@ export function listPayments(params: PaymentListParams): Promise<PaymentListResp
     `/payments?${query({ ...rest, sortOrder: order(rest), withCredit: withCredit ? 'true' : undefined })}`,
     PaymentListResponseSchema,
   );
+}
+
+/** The receipt for a payment, as a PDF. */
+export function downloadReceipt(id: string): Promise<Blob> {
+  return api.download(`/payments/${id}/receipt`);
 }
 
 export function getPayment(id: string): Promise<Payment> {

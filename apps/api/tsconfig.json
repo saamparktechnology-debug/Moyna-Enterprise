@@ -1,3 +1,4 @@
+//apps/api/tsconfig.json
 {
   "extends": "../../tsconfig.node.json",
   "compilerOptions": { "outDir": "dist", "rootDir": "../..", "types": ["node"] },

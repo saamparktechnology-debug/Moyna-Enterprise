@@ -1,3 +1,4 @@
+//apps/web/src/features/roles/use-roles.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateRoleRequest, UpdateRoleRequest } from '@erp/contracts';
 import { createRole, listPermissions, listRoles, updateRole } from './roles-api';

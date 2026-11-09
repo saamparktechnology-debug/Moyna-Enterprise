@@ -1,3 +1,4 @@
+//apps/web/src/components/forms/file-upload.tsx
 import { FileText, Upload, X } from 'lucide-react';
 import { useId, useRef } from 'react';
 import { Button } from '@/components/ui/button';

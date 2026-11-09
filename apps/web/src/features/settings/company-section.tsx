@@ -1,3 +1,4 @@
+//apps/web/src/features/settings/company-section.tsx
 import { useState } from 'react';
 import type { Setting } from '@erp/contracts';
 import { Alert } from '@/components/alert';

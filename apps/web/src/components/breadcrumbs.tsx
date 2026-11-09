@@ -1,3 +1,4 @@
+//apps/web/src/components/breadcrumbs.tsx
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router';
 import { cn } from '@/lib/utils';

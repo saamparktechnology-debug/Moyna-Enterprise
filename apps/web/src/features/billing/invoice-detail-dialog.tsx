@@ -1,3 +1,4 @@
+//apps/web/src/features/billing/invoice-detail-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { useState } from 'react';
 import type { Invoice } from '@erp/contracts';
@@ -9,6 +10,7 @@ import { useAuth } from '@/features/auth/auth-provider';
 import { describeError } from '../purchasing/purchasing-shared';
 import type { Problem } from '../purchasing/purchasing-shared';
 import { downloadInvoicePdf } from './billing-api';
+import { GiftPhotoPanel } from './gift-photo-panel';
 import { STATUS_TEXT, TYPE_TEXT } from './billing-shared';
 import { useInvoice, useInvoiceMutations } from './use-billing';
 
@@ -127,6 +129,16 @@ export function InvoiceDetailDialog({
                   <dd>{invoice.brokerName}</dd>
                 </>
               ) : null}
+              {invoice.commission && invoice.commission.type !== 'NONE' ? (
+                <>
+                  <dt className="text-muted-foreground print:hidden">Commission agreed</dt>
+                  <dd className="print:hidden">
+                    {invoice.commission.type === 'GIFT'
+                      ? `Gift: ${invoice.commission.giftName ?? ''} (worth ${invoice.commission.amount ?? ''})`
+                      : `${invoice.commission.amount ?? ''} fixed`}
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-muted-foreground">Branch</dt>
               <dd>
                 {invoice.branchCode}
@@ -187,6 +199,14 @@ export function InvoiceDetailDialog({
                     </>
                   ),
                 },
+                ...(invoice.type === 'GST'
+                  ? [
+                      {
+                        header: 'HSN',
+                        cell: (line: Invoice['lines'][number]) => line.hsnCode ?? '—',
+                      },
+                    ]
+                  : []),
                 { header: 'Qty', align: 'right', cell: (line) => line.qty },
                 { header: 'Price', align: 'right', cell: (line) => line.unitPrice },
                 { header: 'Discount', align: 'right', cell: (line) => line.discountAmount },
@@ -232,7 +252,18 @@ export function InvoiceDetailDialog({
               <dd className="text-right">{invoice.roundOff}</dd>
               <dt className="font-semibold">Total</dt>
               <dd className="text-right font-semibold">{invoice.total}</dd>
+              {invoice.profit ? (
+                <>
+                  {/* Profit is for the shop, not the customer, so it never prints. */}
+                  <dt className="print:hidden">Profit</dt>
+                  <dd className="text-right print:hidden">{invoice.profit}</dd>
+                </>
+              ) : null}
             </dl>
+            <GiftPhotoPanel
+              invoice={invoice}
+              editable={invoice.status === 'DRAFT' && can('invoices.create')}
+            />
 
             {invoice.status === 'DRAFT' && can('invoices.create') ? (
               <div className="mt-4 max-w-md">

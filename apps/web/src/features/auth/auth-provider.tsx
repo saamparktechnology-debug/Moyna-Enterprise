@@ -1,3 +1,4 @@
+//apps/web/src/features/auth/auth-provider.tsx
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';

@@ -1,3 +1,4 @@
+//apps/web/src/features/payments/ledger-dialog.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { LedgerEntry } from '@erp/contracts';

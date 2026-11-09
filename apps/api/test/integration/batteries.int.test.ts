@@ -1,3 +1,4 @@
+//apps/api/test/integration/batteries.int.test.ts
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   BatteryAlertsSchema,

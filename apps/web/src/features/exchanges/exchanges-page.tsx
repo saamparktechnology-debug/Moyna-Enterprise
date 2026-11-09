@@ -1,3 +1,4 @@
+//apps/web/src/features/exchanges/exchanges-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { EXCHANGE_KINDS, EXCHANGE_STATUSES } from '@erp/contracts';

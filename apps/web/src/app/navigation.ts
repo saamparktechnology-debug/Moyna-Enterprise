@@ -1,3 +1,4 @@
+//apps/web/src/app/navigation.ts
 import {
   Banknote,
   BarChart3,

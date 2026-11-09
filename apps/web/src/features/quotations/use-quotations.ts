@@ -1,3 +1,4 @@
+//apps\web\src\features\quotations\use-quotations.ts
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AssignUnitRequest,
@@ -71,7 +72,8 @@ export function useQuotationMutations() {
       onSuccess: refresh,
     }),
     advance: useMutation({
-      mutationFn: withId<TakeAdvanceRequest>(takeAdvance),
+      mutationFn: ({ id, values }: { id: string; values: TakeAdvanceRequest }) =>
+        takeAdvance(id, values),
       onSuccess: refreshMoney,
     }),
     build: useMutation({

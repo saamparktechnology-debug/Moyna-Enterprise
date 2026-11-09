@@ -1,3 +1,4 @@
+//apps/web/src/lib/use-appearance.ts
 import { useEffect } from 'react';
 import type { DensityPreference, ThemePreference } from './preferences';
 

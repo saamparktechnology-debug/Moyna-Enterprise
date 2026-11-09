@@ -1,3 +1,4 @@
+//apps/web/src/features/customers/kyc.test.tsx
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -289,27 +290,82 @@ describe('verifying and rejecting', () => {
 
 describe('viewing a file', () => {
   const create = vi.fn(() => 'blob:kyc-file');
+  const revoke = vi.fn();
   const open = vi.fn();
   beforeEach(() => {
     create.mockClear();
+    revoke.mockClear();
     open.mockClear();
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create }));
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
     vi.spyOn(window, 'open').mockImplementation(open);
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('opens the downloaded file in a new tab without letting it see this page', async () => {
-    const { dialog, calls } = await openKyc(MANAGER, [makeDocument()], {
-      'GET /api/customers/c-1/kyc-documents/d-1/file': () =>
-        new Response('%PDF-1.4', { headers: { 'content-type': 'application/pdf' } }),
-    });
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'View Aadhaar card aadhaar.pdf' }),
+  const fileRoute = (body: BodyInit, type: string): Record<string, RouteHandler> => ({
+    'GET /api/customers/c-1/kyc-documents/d-1/file': () =>
+      new Response(body, { headers: { 'content-type': type } }),
+  });
+  const view = (dialog: HTMLElement) =>
+    userEvent.click(within(dialog).getByRole('button', { name: 'View Aadhaar card aadhaar.pdf' }));
+
+  it('shows a PDF inside the dialog, without opening a pop-up window', async () => {
+    const { dialog, calls } = await openKyc(
+      MANAGER,
+      [makeDocument()],
+      fileRoute('%PDF-1.4', 'application/pdf'),
     );
-    await waitFor(() => expect(open).toHaveBeenCalledWith('blob:kyc-file', '_blank', 'noopener'));
+    await view(dialog);
+    const preview = await within(dialog).findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByTitle('Aadhaar card aadhaar.pdf')).toHaveAttribute(
+      'src',
+      'blob:kyc-file',
+    );
+    expect(open).not.toHaveBeenCalled();
     expect(calls.some((call) => call.key === 'GET /api/customers/c-1/kyc-documents/d-1/file')).toBe(
       true,
     );
+  });
+
+  it('shows a photo as an image', async () => {
+    const { dialog } = await openKyc(
+      MANAGER,
+      [makeDocument({ mimeType: 'image/jpeg', fileName: 'aadhaar.pdf' })],
+      fileRoute('jpeg-bytes', 'image/jpeg'),
+    );
+    await view(dialog);
+    const preview = await within(dialog).findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByRole('img', { name: 'Aadhaar card aadhaar.pdf' })).toHaveAttribute(
+      'src',
+      'blob:kyc-file',
+    );
+  });
+
+  it('offers a real link to open the file in a new tab', async () => {
+    const { dialog } = await openKyc(
+      MANAGER,
+      [makeDocument()],
+      fileRoute('%PDF-1.4', 'application/pdf'),
+    );
+    await view(dialog);
+    const link = await within(dialog).findByRole('link', { name: 'Open in new tab' });
+    expect(link).toHaveAttribute('href', 'blob:kyc-file');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('lets go of the file when the preview is closed', async () => {
+    const { dialog } = await openKyc(
+      MANAGER,
+      [makeDocument()],
+      fileRoute('%PDF-1.4', 'application/pdf'),
+    );
+    await view(dialog);
+    await within(dialog).findByRole('region', { name: 'Document preview' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close preview' }));
+    expect(
+      within(dialog).queryByRole('region', { name: 'Document preview' }),
+    ).not.toBeInTheDocument();
+    expect(revoke).toHaveBeenCalledWith('blob:kyc-file');
   });
 
   it('shows the message when the file cannot be read', async () => {
@@ -325,10 +381,10 @@ describe('viewing a file', () => {
           404,
         ),
     });
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'View Aadhaar card aadhaar.pdf' }),
-    );
+    await view(dialog);
     expect(await within(dialog).findByText('The stored file was not found')).toBeInTheDocument();
-    expect(open).not.toHaveBeenCalled();
+    expect(
+      within(dialog).queryByRole('region', { name: 'Document preview' }),
+    ).not.toBeInTheDocument();
   });
 });

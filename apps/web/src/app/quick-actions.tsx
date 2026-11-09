@@ -1,3 +1,4 @@
+//apps/web/src/app/quick-actions.tsx
 import { Plus } from 'lucide-react';
 import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';

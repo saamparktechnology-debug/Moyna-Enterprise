@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/receipts-tab.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { GoodsReceipt, GoodsReceiptListResponse } from '@erp/contracts';

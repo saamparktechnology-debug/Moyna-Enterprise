@@ -1,3 +1,4 @@
+//apps/web/src/features/items/item-form-dialog.tsx
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -7,6 +8,7 @@ import {
   HsnCodeValueSchema,
   ItemCodeSchema,
   ItemNameSchema,
+  PurchasePriceSchema,
   ReorderLevelSchema,
 } from '@erp/contracts';
 import type { Item, ItemCategory } from '@erp/contracts';
@@ -15,6 +17,7 @@ import { FormField, Input } from '@/components/form-field';
 import { Select } from '@/components/select-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { useAuth } from '@/features/auth/auth-provider';
 import { ApiError } from '@/lib/api-client';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import {
@@ -39,8 +42,25 @@ const FormSchema = z
     isSerialized: z.boolean(),
     barcode: z.string().trim(),
     generateBarcode: z.boolean(),
+    actualPurchasePrice: z.string().trim(),
+    displayPurchasePrice: z.string().trim(),
   })
   .superRefine((values, context) => {
+    for (const field of ['actualPurchasePrice', 'displayPurchasePrice'] as const) {
+      const parsed = values[field] === '' ? null : PurchasePriceSchema.safeParse(values[field]);
+      if (parsed && !parsed.success)
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: parsed.error.issues[0]?.message ?? 'Enter an amount',
+        });
+    }
+    if (values.displayPurchasePrice !== '' && values.actualPurchasePrice === '')
+      context.addIssue({
+        code: 'custom',
+        path: ['displayPurchasePrice'],
+        message: 'Enter the actual purchase price first',
+      });
     if (values.hsnCode !== '' && !HsnCodeValueSchema.safeParse(values.hsnCode).success)
       context.addIssue({
         code: 'custom',
@@ -75,6 +95,8 @@ const FIELDS = [
   'reorderLevel',
   'isSerialized',
   'barcode',
+  'actualPurchasePrice',
+  'displayPurchasePrice',
 ] as const;
 type FieldName = (typeof FIELDS)[number];
 const isField = (name: string): name is FieldName => (FIELDS as readonly string[]).includes(name);
@@ -153,6 +175,7 @@ interface ItemFormProps {
 
 function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved }: ItemFormProps) {
   const { create, update, addBarcode, removeBarcode } = useItemMutations();
+  const isSuperAdmin = useAuth().user?.isSuperAdmin ?? false;
   const [current, setCurrent] = useState<Item | null>(item);
   const [serverError, setServerError] = useState<string | null>(null);
   const [manualBarcode, setManualBarcode] = useState('');
@@ -177,6 +200,8 @@ function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved 
       isSerialized: item?.isSerialized ?? false,
       barcode: '',
       generateBarcode: false,
+      actualPurchasePrice: item?.actualPurchasePrice ?? '',
+      displayPurchasePrice: item?.displayPurchasePrice ?? '',
     },
   });
 
@@ -214,6 +239,15 @@ function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved 
     const parsed = FormSchema.parse(values);
     const hsnCode = parsed.hsnCode === '' ? null : parsed.hsnCode;
     const taxRateValue = parsed.taxRate === '' ? null : parsed.taxRate;
+    // Only a Super Admin's form carries the prices; the server refuses them from anyone else.
+    const prices = isSuperAdmin
+      ? {
+          actualPurchasePrice:
+            parsed.actualPurchasePrice === '' ? null : parsed.actualPurchasePrice,
+          displayPurchasePrice:
+            parsed.displayPurchasePrice === '' ? null : parsed.displayPurchasePrice,
+        }
+      : {};
     try {
       if (current) {
         await update.mutateAsync({
@@ -226,6 +260,7 @@ function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved 
             taxRate: taxRateValue,
             reorderLevel: parsed.reorderLevel,
             isSerialized: parsed.isSerialized,
+            ...prices,
             rowVersion: current.rowVersion,
           },
         });
@@ -241,6 +276,7 @@ function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved 
           reorderLevel: parsed.reorderLevel,
           isSerialized: parsed.isSerialized,
           generateBarcode: parsed.generateBarcode,
+          ...prices,
           ...(parsed.barcode === '' ? {} : { barcode: parsed.barcode }),
         });
         onSaved(`Item ${parsed.itemCode} created`);
@@ -308,7 +344,7 @@ function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved 
           <FormField
             label="HSN code"
             error={errors.hsnCode?.message}
-            hint="Optional. Start typing to search"
+            hint="Optional. Start typing to search. A code that is not in the list is added when you save"
           >
             {(props) => (
               <>
@@ -360,6 +396,40 @@ function ItemForm({ item, categories, units, rates, canManage, onClose, onSaved 
             )}
           </FormField>
         </div>
+
+        {isSuperAdmin ? (
+          <fieldset className="grid gap-4 rounded-md border p-3 sm:grid-cols-2">
+            <legend className="px-1 text-sm font-medium">Purchase price</legend>
+            <FormField
+              label="Actual purchase price"
+              error={errors.actualPurchasePrice?.message}
+              hint="The real cost. Only a Super Admin can see it"
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  {...register('actualPurchasePrice')}
+                />
+              )}
+            </FormField>
+            <FormField
+              label="Price shown to Admin and staff"
+              error={errors.displayPurchasePrice?.message}
+              hint="Their cost and profit use this. Leave blank to show them none"
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  {...register('displayPurchasePrice')}
+                />
+              )}
+            </FormField>
+          </fieldset>
+        ) : null}
 
         <div className="space-y-1">
           <label className="flex items-center gap-2 text-sm font-medium">

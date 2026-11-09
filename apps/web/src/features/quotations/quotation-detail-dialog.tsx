@@ -1,3 +1,4 @@
+//apps/web/src/features/quotations/quotation-detail-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { StatusBadge } from '@/components/status-badge';
 import { useState } from 'react';
@@ -8,6 +9,7 @@ import {
   todayInIndia,
 } from '@erp/contracts';
 import type { BuildStageName, Quotation, QuotationLine } from '@erp/contracts';
+import { FilePreview, useFilePreview } from '@/components/file-preview';
 import { FormField, Input } from '@/components/form-field';
 import { Select } from '@/components/select-field';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { useAuth } from '@/features/auth/auth-provider';
 import { useSellableUnits } from '../billing/use-billing';
 import { formatWhen } from '../leads/leads-shared';
+import { downloadReceipt } from '../payments/payments-api';
 import { ProblemAlert } from '../payments/payments-shared';
 import { describeError } from '../purchasing/purchasing-shared';
 import type { Problem } from '../purchasing/purchasing-shared';
@@ -43,6 +46,7 @@ export function QuotationDetailDialog({ quotationId, onClose, onEdit, onDone }: 
   const [stage, setStage] = useState('');
   const [stageNote, setStageNote] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const receiptView = useFilePreview();
   const busy = Object.values(m).some((mutation) => mutation.isPending);
   const open = q ? q.status === 'DRAFT' || q.status === 'SENT' || q.status === 'ACCEPTED' : false;
 
@@ -57,6 +61,12 @@ export function QuotationDetailDialog({ quotationId, onClose, onEdit, onDone }: 
       setProblem(described);
       setErrors(described.fields);
     }
+  };
+
+  /** Shows a payment's receipt where the person is working, ready to print or open in a new tab. */
+  const openReceipt = async (paymentId: string, receiptNo: string) => {
+    const blob = await downloadReceipt(paymentId);
+    receiptView.show(blob, 'application/pdf', `Receipt ${receiptNo}`);
   };
 
   return (
@@ -228,11 +238,39 @@ export function QuotationDetailDialog({ quotationId, onClose, onEdit, onDone }: 
                           />
                         ),
                       },
+                      ...(can('payments.view')
+                        ? [
+                            {
+                              header: 'Receipt copy',
+                              cell: (item: Quotation['advances'][number]) => (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={busy}
+                                  aria-label={`View receipt ${item.receiptNo}`}
+                                  onClick={() =>
+                                    void run(() => openReceipt(item.paymentId, item.receiptNo))
+                                  }
+                                >
+                                  View receipt
+                                </Button>
+                              ),
+                            },
+                          ]
+                        : []),
                     ]}
                   />
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground">No advance has been taken.</p>
                 )}
+                {receiptView.preview ? (
+                  <FilePreview
+                    url={receiptView.preview.url}
+                    mimeType={receiptView.preview.mimeType}
+                    title={receiptView.preview.title}
+                    onClose={receiptView.close}
+                  />
+                ) : null}
               </>
             ) : null}
             {can('payments.create') &&
@@ -291,8 +329,18 @@ export function QuotationDetailDialog({ quotationId, onClose, onEdit, onDone }: 
                       setErrors({ amount: parsed.error.issues[0]?.message ?? 'Check the amount' });
                       return;
                     }
+                    const known = new Set(q.advances.map((item) => item.paymentId));
                     void run(
-                      () => m.advance.mutateAsync({ id: q.id, values: request }),
+                      async () => {
+                        const updated = await m.advance.mutateAsync({ id: q.id, values: request });
+                        // Hand the customer a receipt straight away. Someone who may not view payments just
+                        // takes the money; the receipt can be printed later by someone who may.
+                        const fresh = updated.advances.find((item) => !known.has(item.paymentId));
+                        if (fresh && can('payments.view'))
+                          await openReceipt(fresh.paymentId, fresh.receiptNo).catch(
+                            () => undefined,
+                          );
+                      },
                       () => setAdvance({ amount: '', mode: advance.mode, reference: '' }),
                     );
                   }}

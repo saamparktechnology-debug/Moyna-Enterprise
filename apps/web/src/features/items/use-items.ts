@@ -1,3 +1,4 @@
+//apps/web/src/features/items/use-items.ts
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AddBarcodeRequest,
@@ -37,8 +38,8 @@ export function useItems(params: ItemListParams, enabled = true) {
   });
 }
 
-export function useCategories() {
-  return useQuery({ queryKey: [CATEGORIES_KEY], queryFn: listCategories });
+export function useCategories(enabled = true) {
+  return useQuery({ queryKey: [CATEGORIES_KEY], queryFn: listCategories, enabled });
 }
 export function useUnits() {
   return useQuery({ queryKey: ['reference', 'units'], queryFn: listUnits, staleTime: Infinity });

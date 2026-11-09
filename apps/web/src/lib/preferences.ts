@@ -1,3 +1,4 @@
+//apps/web/src/lib/preferences.ts
 import { useCallback, useSyncExternalStore } from 'react';
 
 /**

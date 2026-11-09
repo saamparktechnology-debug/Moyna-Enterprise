@@ -1,3 +1,4 @@
+//apps/web/src/features/billing/billing-shared.ts
 import type { InvoiceStatusName, InvoiceTypeName } from '@erp/contracts';
 
 export const STATUS_TEXT: Record<InvoiceStatusName, string> = {

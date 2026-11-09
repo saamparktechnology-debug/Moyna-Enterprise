@@ -1,3 +1,4 @@
+//apps/web/src/features/brokers/brokers-api.ts
 import {
   BrokerLedgerSchema,
   BrokerListResponseSchema,
@@ -74,6 +75,33 @@ export const listCommissions = (params: CommissionListParams): Promise<Commissio
     `/commissions?${query({ ...params, sortOrder: params.sortBy ? params.sortOrder : undefined })}`,
     CommissionListResponseSchema,
   );
+
+/** Sets the broker's photo (JPEG or PNG), replacing the one on file. */
+export const uploadBrokerPhoto = (id: string, file: File): Promise<Broker> =>
+  api.upload(`/brokers/${id}/photo?${query({ fileName: file.name })}`, file, {}, BrokerSchema);
+
+export const deleteBrokerPhoto = (id: string): Promise<Broker> =>
+  api.delete(`/brokers/${id}/photo`, BrokerSchema);
+
+export const addBrokerDocument = (id: string, file: File, label: string): Promise<Broker> =>
+  api.upload(
+    `/brokers/${id}/documents?${query({ fileName: file.name, label: label.trim() })}`,
+    file,
+    {},
+    BrokerSchema,
+  );
+
+export const deleteBrokerDocument = (id: string, fileId: string): Promise<Broker> =>
+  api.delete(`/brokers/${id}/documents/${fileId}`, BrokerSchema);
+
+export const downloadBrokerPhoto = (id: string): Promise<Blob> =>
+  api.download(`/brokers/${id}/photo`);
+
+export const downloadBrokerDocument = (id: string, fileId: string): Promise<Blob> =>
+  api.download(`/brokers/${id}/documents/${fileId}/file`);
+
+export const downloadCommissionGiftPhoto = (id: string): Promise<Blob> =>
+  api.download(`/commissions/${id}/gift-photo`);
 
 export const payoutCommissions = (values: PayoutRequest): Promise<PayoutResponse> =>
   api.post('/commissions/payout', values, PayoutResponseSchema);

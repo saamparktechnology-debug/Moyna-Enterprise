@@ -1,3 +1,4 @@
+//apps/web/src/components/command-palette.tsx
 import { useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { NavSearchInput, NavSearchList, useNavSearch } from '@/components/nav-search';

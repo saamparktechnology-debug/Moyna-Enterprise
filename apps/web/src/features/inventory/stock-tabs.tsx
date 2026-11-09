@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/stock-tabs.tsx
 import type { ColumnDef } from '@tanstack/react-table';
 import { MOVEMENT_TYPES, SERIAL_UNIT_STATES } from '@erp/contracts';
 import type { LowStock, Movement, SerialUnit, StockBalance } from '@erp/contracts';

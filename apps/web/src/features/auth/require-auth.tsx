@@ -1,3 +1,4 @@
+//apps/web/src/features/auth/require-auth.tsx
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { Alert } from '@/components/alert';
 import { Button } from '@/components/ui/button';

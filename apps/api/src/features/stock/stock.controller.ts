@@ -1,3 +1,4 @@
+//apps/api/src/features/stock/stock.controller.ts
 import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {

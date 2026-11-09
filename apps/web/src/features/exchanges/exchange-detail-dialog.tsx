@@ -1,3 +1,4 @@
+//apps\web\src\features\exchanges\exchange-detail-dialog.tsx
 import { useState } from 'react';
 import type { ExchangeUnit } from '@erp/contracts';
 import { FormField, Input } from '@/components/form-field';

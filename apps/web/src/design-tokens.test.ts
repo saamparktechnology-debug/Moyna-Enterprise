@@ -1,3 +1,4 @@
+//apps\web\src\design-tokens.test.ts
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';

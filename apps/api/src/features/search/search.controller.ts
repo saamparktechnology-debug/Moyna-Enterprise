@@ -1,3 +1,4 @@
+//apps/api/src/features/search/search.controller.ts
 import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { SearchResponseSchema, toOpenApiSchema } from '@erp/contracts';

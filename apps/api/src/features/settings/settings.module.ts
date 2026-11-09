@@ -1,3 +1,4 @@
+//apps/api/src/features/settings/settings.module.ts
 import { Global, Module } from '@nestjs/common';
 import { GstRatesService } from './gst-rates.service.js';
 import { SeriesService } from './series.service.js';

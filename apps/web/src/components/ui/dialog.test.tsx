@@ -1,3 +1,4 @@
+//apps/web/src/components/ui/dialog.test.tsx
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './dialog';

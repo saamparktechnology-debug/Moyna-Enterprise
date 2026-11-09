@@ -1,3 +1,4 @@
+//apps/api/test/integration/dashboards.int.test.ts
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   BranchDashboardSchema,
@@ -499,8 +500,8 @@ describe('dashboards', () => {
       expect(a.transfers).toEqual({ incoming: 0, outgoing: 1 });
       const b = await branch(adminB, w.branchB);
       expect(b.transfers).toEqual({ incoming: 1, outgoing: 1 });
-      expect(a.followups).toEqual({ overdue: 1, today: 0, upcoming: 1 });
-      expect(b.followups).toEqual({ overdue: 0, today: 0, upcoming: 0 });
+      expect(a.followups).toEqual({ overdue: 1, today: 0, upcoming: 1, dueToday: 0 });
+      expect(b.followups).toEqual({ overdue: 0, today: 0, upcoming: 0, dueToday: 0 });
     });
 
     it('has one trend point per day that adds up to the figures', async () => {

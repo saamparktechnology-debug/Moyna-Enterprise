@@ -1,3 +1,4 @@
+//apps/api/src/features/payments/payments.module.ts
 import { Module } from '@nestjs/common';
 import { DuesController } from './dues.controller.js';
 import { DuesService } from './dues.service.js';

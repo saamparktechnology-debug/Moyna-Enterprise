@@ -14,6 +14,11 @@ export function resolvePeriod(
   return { from: `${today.slice(0, 8)}01`, to: today };
 }
 
+/** The first instant of today in India, which starts "today" for follow-ups. */
+export function todayStartInIndia(now: Date = new Date()): Date {
+  return new Date(`${todayInIndia(now)}T00:00:00.000${IST_OFFSET}`);
+}
+
 /** The first instant of tomorrow in India, which ends "today" for follow-ups. */
 export function tomorrowStartInIndia(now: Date = new Date()): Date {
   const today = new Date(`${todayInIndia(now)}T00:00:00.000${IST_OFFSET}`);

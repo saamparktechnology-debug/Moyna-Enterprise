@@ -1,3 +1,4 @@
+//apps/web/src/features/items/categories-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { StatusBadge } from '@/components/status-badge';
 import { useState } from 'react';

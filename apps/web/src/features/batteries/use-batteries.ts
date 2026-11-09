@@ -1,3 +1,4 @@
+//apps/web/src/features/batteries/use-batteries.ts
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { InstallBatteryRequest, SetBatteryDetailsRequest } from '@erp/contracts';
 import {

@@ -1,3 +1,4 @@
+//apps/api/src/features/items/items.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import {
   AddBarcodeRequestSchema,
@@ -16,6 +17,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import {
   BusinessRuleError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
   ValidationFailedError,
 } from '../../common/errors/domain-errors.js';
@@ -41,6 +43,15 @@ interface References {
   taxRate?: string | null | undefined;
 }
 
+/** A price in the update request wins when it is there (`null` clears it); otherwise the stored one stays. */
+function nextPrice(
+  requested: string | null | undefined,
+  stored: Prisma.Decimal | null,
+): string | null {
+  if (requested === undefined) return stored?.toFixed(2) ?? null;
+  return requested === null ? null : new Prisma.Decimal(requested).toFixed(2);
+}
+
 @Injectable()
 export class ItemsService {
   constructor(
@@ -49,7 +60,7 @@ export class ItemsService {
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  async list(rawQuery: unknown): Promise<ItemListResponse> {
+  async list(auth: AuthContext, rawQuery: unknown): Promise<ItemListResponse> {
     const query = ItemListQuerySchema.parse(rawQuery);
     const filters: Prisma.ItemWhereInput[] = [];
     if (query.status !== 'all') filters.push({ isActive: query.status === 'active' });
@@ -70,17 +81,21 @@ export class ItemsService {
       this.prisma.item.findMany({ where, orderBy, include: ITEM_INCLUDE, ...toSkipTake(query) }),
       this.prisma.item.count({ where }),
     ]);
-    return buildPage(rows.map(toItemDto), total, query);
+    return buildPage(
+      rows.map((row) => toItemDto(row, auth)),
+      total,
+      query,
+    );
   }
 
-  async get(id: string): Promise<Item> {
+  async get(auth: AuthContext, id: string): Promise<Item> {
     const row = await this.prisma.item.findUnique({ where: { id }, include: ITEM_INCLUDE });
     if (!row) throw new NotFoundError('Item', id);
-    return toItemDto(row);
+    return toItemDto(row, auth);
   }
 
   /** Scan lookup: a barcode first, then an item code typed by hand. Inactive items are found but refused. */
-  async lookup(rawQuery: unknown): Promise<Item> {
+  async lookup(auth: AuthContext, rawQuery: unknown): Promise<Item> {
     const { barcode } = ItemLookupQuerySchema.parse(rawQuery);
     const hit = await this.prisma.itemBarcode.findUnique({
       where: { barcode },
@@ -97,15 +112,18 @@ export class ItemsService {
       throw new BusinessRuleError('This item is inactive and cannot be used', [
         { field: 'barcode', message: `${row.itemCode} is inactive` },
       ]);
-    return toItemDto(row);
+    return toItemDto(row, auth);
   }
 
   async create(auth: AuthContext, body: unknown): Promise<Item> {
     const input = CreateItemRequestSchema.parse(body);
+    this.assertMayPrice(auth, input);
     const hsn = await this.assertReferences(input);
     const taxRate = input.taxRate ?? (hsn?.gstRate ? hsn.gstRate.toFixed(2) : null);
     try {
       return await this.transactions.run(async (tx) => {
+        if (input.hsnCode && hsn && !hsn.known)
+          await this.addHsn(tx, auth, input.hsnCode, input.name, taxRate);
         const barcode = input.generateBarcode ? await this.nextBarcode(tx) : input.barcode;
         const row = await tx.item.create({
           data: {
@@ -117,6 +135,8 @@ export class ItemsService {
             taxRate,
             reorderLevel: input.reorderLevel,
             isSerialized: input.isSerialized,
+            actualPurchasePrice: input.actualPurchasePrice ?? null,
+            displayPurchasePrice: input.displayPurchasePrice ?? null,
             createdBy: auth.userId,
             updatedBy: auth.userId,
             ...(barcode
@@ -135,7 +155,7 @@ export class ItemsService {
           entityId: row.id,
           newValue: { ...itemSnapshot(row), barcodes: row.itemBarcodes.map((b) => b.barcode) },
         });
-        return toItemDto(row);
+        return toItemDto(row, auth);
       });
     } catch (error) {
       throw await this.explainConflict(error, input.itemCode, input.barcode);
@@ -144,10 +164,20 @@ export class ItemsService {
 
   async update(auth: AuthContext, id: string, body: unknown): Promise<Item> {
     const input = UpdateItemRequestSchema.parse(body);
-    await this.assertReferences(input);
+    this.assertMayPrice(auth, input);
+    const hsn = await this.assertReferences(input);
     return this.transactions.run(async (tx) => {
       const current = await this.lock(tx, id);
       if (current.rowVersion !== input.rowVersion) throw this.staleVersion();
+      // A new HSN code brings its GST rate along, but only for an item that has none and was not given one.
+      const hsnRate =
+        input.hsnCode &&
+        input.hsnCode !== current.hsnCode &&
+        current.taxRate === null &&
+        input.taxRate === undefined &&
+        hsn?.gstRate
+          ? hsn.gstRate.toFixed(2)
+          : null;
 
       const next = {
         name: input.name ?? current.name,
@@ -156,13 +186,22 @@ export class ItemsService {
         hsnCode: input.hsnCode === undefined ? current.hsnCode : input.hsnCode,
         taxRate:
           input.taxRate === undefined
-            ? (current.taxRate?.toFixed(2) ?? null)
+            ? (current.taxRate?.toFixed(2) ?? hsnRate)
             : input.taxRate === null
               ? null
               : new Prisma.Decimal(input.taxRate).toFixed(2),
         reorderLevel: input.reorderLevel ?? current.reorderLevel,
         isSerialized: input.isSerialized ?? current.isSerialized,
+        actualPurchasePrice: nextPrice(input.actualPurchasePrice, current.actualPurchasePrice),
+        displayPurchasePrice: nextPrice(input.displayPurchasePrice, current.displayPurchasePrice),
       };
+      if (next.displayPurchasePrice !== null && next.actualPurchasePrice === null)
+        throw new ValidationFailedError('Enter the actual purchase price first', [
+          {
+            field: 'displayPurchasePrice',
+            message: 'A shown price needs the actual purchase price',
+          },
+        ]);
       const changed =
         next.name !== current.name ||
         next.categoryId !== current.categoryId ||
@@ -170,8 +209,10 @@ export class ItemsService {
         next.hsnCode !== current.hsnCode ||
         next.taxRate !== (current.taxRate?.toFixed(2) ?? null) ||
         next.reorderLevel !== current.reorderLevel ||
-        next.isSerialized !== current.isSerialized;
-      if (!changed) return toItemDto(current);
+        next.isSerialized !== current.isSerialized ||
+        next.actualPurchasePrice !== (current.actualPurchasePrice?.toFixed(2) ?? null) ||
+        next.displayPurchasePrice !== (current.displayPurchasePrice?.toFixed(2) ?? null);
+      if (!changed) return toItemDto(current, auth);
 
       if (next.isSerialized !== current.isSerialized && (await this.hasStockHistory(tx, id)))
         throw new BusinessRuleError(
@@ -179,6 +220,8 @@ export class ItemsService {
           [{ field: 'isSerialized', message: 'This item already has stock history' }],
         );
 
+      if (next.hsnCode && next.hsnCode !== current.hsnCode && hsn && !hsn.known)
+        await this.addHsn(tx, auth, next.hsnCode, next.name, next.taxRate);
       await tx.item.update({ where: { id }, data: { ...next, updatedBy: auth.userId } });
       const row = await this.reload(tx, id);
       await this.audit.record(tx, {
@@ -188,14 +231,26 @@ export class ItemsService {
         oldValue: itemSnapshot(current),
         newValue: itemSnapshot(row),
       });
-      return toItemDto(row);
+      return toItemDto(row, auth);
     });
+  }
+
+  /** Purchase prices are the Super Admin's to set; for everyone else sending one is refused, not ignored. */
+  private assertMayPrice(
+    auth: AuthContext,
+    input: { actualPurchasePrice?: string | null; displayPurchasePrice?: string | null },
+  ): void {
+    if (
+      (input.actualPurchasePrice !== undefined || input.displayPurchasePrice !== undefined) &&
+      !auth.isSuperAdmin
+    )
+      throw new ForbiddenError('Only a Super Admin can set purchase prices');
   }
 
   async setActive(auth: AuthContext, id: string, active: boolean): Promise<Item> {
     return this.transactions.run(async (tx) => {
       const current = await this.lock(tx, id);
-      if (current.isActive === active) return toItemDto(current);
+      if (current.isActive === active) return toItemDto(current, auth);
       if (!active) {
         const onHand = await this.stockOnHand(tx, id);
         if (onHand > 0)
@@ -215,7 +270,7 @@ export class ItemsService {
         oldValue: { isActive: !active },
         newValue: { isActive: active },
       });
-      return toItemDto(row);
+      return toItemDto(row, auth);
     });
   }
 
@@ -239,7 +294,7 @@ export class ItemsService {
           entityId: id,
           newValue: { barcode, generated: 'generate' in input },
         });
-        return toItemDto(row);
+        return toItemDto(row, auth);
       });
     } catch (error) {
       throw await this.explainConflict(error, null, requested);
@@ -260,7 +315,7 @@ export class ItemsService {
         entityId: id,
         oldValue: { barcode: barcode.barcode },
       });
-      return toItemDto(row);
+      return toItemDto(row, auth);
     });
   }
 
@@ -334,9 +389,13 @@ export class ItemsService {
     return [...found];
   }
 
+  /**
+   * Checks the category, unit, GST rate and HSN code an item names. An HSN code that is not in the list yet is allowed (any
+   * 4 to 8 digit code is valid) and is added when the item is saved; one that was switched off is refused.
+   */
   private async assertReferences(
     refs: References,
-  ): Promise<{ gstRate: Prisma.Decimal | null } | null> {
+  ): Promise<{ gstRate: Prisma.Decimal | null; known: boolean } | null> {
     const problems: ErrorDetail[] = [];
     if (refs.categoryId) {
       const category = await this.prisma.itemCategory.findFirst({
@@ -356,14 +415,41 @@ export class ItemsService {
       });
       if (!rate) problems.push({ field: 'taxRate', message: 'Choose a GST rate from the list' });
     }
-    let hsn: { gstRate: Prisma.Decimal | null } | null = null;
+    let hsn: { gstRate: Prisma.Decimal | null; known: boolean } | null = null;
     if (refs.hsnCode) {
-      hsn = await this.prisma.hsnCode.findFirst({ where: { code: refs.hsnCode, isActive: true } });
-      if (!hsn) problems.push({ field: 'hsnCode', message: 'Choose an HSN code from the list' });
+      const found = await this.prisma.hsnCode.findUnique({ where: { code: refs.hsnCode } });
+      if (found && !found.isActive)
+        problems.push({
+          field: 'hsnCode',
+          message: 'This HSN code is switched off. Choose another',
+        });
+      hsn = { gstRate: found?.gstRate ?? null, known: found !== null };
     }
     if (problems.length > 0)
       throw new ValidationFailedError('Some choices are not valid', problems);
     return hsn;
+  }
+
+  /** Adds an HSN code that was typed for an item and is not in the list yet, with the item's GST rate if it has one. */
+  private async addHsn(
+    tx: TxClient,
+    auth: AuthContext,
+    code: string,
+    itemName: string,
+    taxRate: string | null,
+  ): Promise<void> {
+    await tx.hsnCode.createMany({
+      data: [
+        {
+          code,
+          description: `Added with item ${itemName}`.slice(0, 200),
+          gstRate: taxRate,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+        },
+      ],
+      skipDuplicates: true,
+    });
   }
 
   private async nextBarcode(tx: TxClient): Promise<string> {

@@ -1,3 +1,4 @@
+//apps/web/src/features/brokers/use-brokers.ts
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AddCommissionRuleRequest,
@@ -6,14 +7,18 @@ import type {
   UpdateBrokerRequest,
 } from '@erp/contracts';
 import {
+  addBrokerDocument,
   addRule,
   createBroker,
+  deleteBrokerDocument,
+  deleteBrokerPhoto,
   getBroker,
   getBrokerLedger,
   listBrokers,
   listCommissions,
   payoutCommissions,
   updateBroker,
+  uploadBrokerPhoto,
 } from './brokers-api';
 import type { BrokerListParams, CommissionListParams } from './brokers-api';
 
@@ -60,6 +65,24 @@ export function useBrokerMutations() {
     addRule: useMutation({
       mutationFn: ({ id, values }: { id: string; values: AddCommissionRuleRequest }) =>
         addRule(id, values),
+      onSuccess: refresh,
+    }),
+    setPhoto: useMutation({
+      mutationFn: ({ id, file }: { id: string; file: File }) => uploadBrokerPhoto(id, file),
+      onSuccess: refresh,
+    }),
+    removePhoto: useMutation({
+      mutationFn: (id: string) => deleteBrokerPhoto(id),
+      onSuccess: refresh,
+    }),
+    addDocument: useMutation({
+      mutationFn: ({ id, file, label }: { id: string; file: File; label: string }) =>
+        addBrokerDocument(id, file, label),
+      onSuccess: refresh,
+    }),
+    removeDocument: useMutation({
+      mutationFn: ({ id, fileId }: { id: string; fileId: string }) =>
+        deleteBrokerDocument(id, fileId),
       onSuccess: refresh,
     }),
     payout: useMutation({

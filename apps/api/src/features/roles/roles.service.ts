@@ -1,3 +1,4 @@
+//apps/api/src/features/roles/roles.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import { CreateRoleRequestSchema, UpdateRoleRequestSchema } from '@erp/contracts';
 import type { PermissionGroup, Role } from '@erp/contracts';

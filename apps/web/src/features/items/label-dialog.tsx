@@ -1,4 +1,5 @@
-import { useState } from 'react';
+//apps/web/src/features/items/label-dialog.tsx
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MAX_LABELS_PER_PRINT, MAX_LABEL_COPIES } from '@erp/contracts';
 import type { Item, LabelResponse } from '@erp/contracts';
@@ -25,9 +26,11 @@ function LabelCard({ label }: { label: LabelResponse['labels'][number] }) {
 interface LabelDialogProps {
   items: Item[];
   onClose: () => void;
+  /** Prepares the labels as soon as the dialog opens, so one item's label is a single click away from printing. */
+  autoPrepare?: boolean;
 }
 
-export function LabelDialog({ items, onClose }: LabelDialogProps) {
+export function LabelDialog({ items, onClose, autoPrepare = false }: LabelDialogProps) {
   const [copies, setCopies] = useState<Record<string, number>>({});
   const build = useBuildLabels();
   const withBarcode = items.filter((item) => item.barcodes.length > 0);
@@ -38,6 +41,42 @@ export function LabelDialog({ items, onClose }: LabelDialogProps) {
   const allValid = withBarcode.every((item) => valid(copiesOf(item.id)));
   const tooMany = allValid && total > MAX_LABELS_PER_PRINT;
   const labels = build.data?.labels ?? [];
+  const request = {
+    items: withBarcode.map((item) => ({ itemId: item.id, copies: copiesOf(item.id) })),
+  };
+  // Set when Print was pressed before the labels were prepared: print as soon as they arrive.
+  const printAfter = useRef(false);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (!autoPrepare || started.current || withBarcode.length === 0) return;
+    started.current = true;
+    build.mutate({ items: withBarcode.map((item) => ({ itemId: item.id, copies: 1 })) });
+  }, [autoPrepare, withBarcode, build]);
+  // Print only after the prepared labels are on the page, so the printout is never empty or out of date.
+  useEffect(() => {
+    if (printAfter.current && labels.length > 0) {
+      printAfter.current = false;
+      window.print();
+    }
+  }, [labels.length]);
+
+  const changeCopies = (id: string, value: number) => {
+    setCopies({ ...copies, [id]: value });
+    // Labels prepared for other numbers of copies would print the wrong run.
+    if (build.data || build.isError) build.reset();
+  };
+  const printNow = () => {
+    if (labels.length > 0) window.print();
+    else {
+      printAfter.current = true;
+      build.mutate(request, {
+        onError: () => {
+          printAfter.current = false;
+        },
+      });
+    }
+  };
 
   return (
     <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
@@ -76,9 +115,7 @@ export function LabelDialog({ items, onClose }: LabelDialogProps) {
                 max={MAX_LABEL_COPIES}
                 className="w-24"
                 value={Number.isNaN(copiesOf(item.id)) ? '' : copiesOf(item.id)}
-                onChange={(event) =>
-                  setCopies({ ...copies, [item.id]: event.target.valueAsNumber })
-                }
+                onChange={(event) => changeCopies(item.id, event.target.valueAsNumber)}
               />
             </li>
           ))}
@@ -120,15 +157,15 @@ export function LabelDialog({ items, onClose }: LabelDialogProps) {
             type="button"
             variant="secondary"
             disabled={build.isPending || withBarcode.length === 0 || !allValid || tooMany}
-            onClick={() =>
-              build.mutate({
-                items: withBarcode.map((item) => ({ itemId: item.id, copies: copiesOf(item.id) })),
-              })
-            }
+            onClick={() => build.mutate(request)}
           >
             {build.isPending ? 'Preparing…' : 'Prepare labels'}
           </Button>
-          <Button type="button" disabled={labels.length === 0} onClick={() => window.print()}>
+          <Button
+            type="button"
+            disabled={build.isPending || withBarcode.length === 0 || !allValid || tooMany}
+            onClick={printNow}
+          >
             Print
           </Button>
         </div>

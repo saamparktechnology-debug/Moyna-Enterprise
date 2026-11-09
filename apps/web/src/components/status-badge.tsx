@@ -1,3 +1,4 @@
+//apps/web/src/components/status-badge.tsx
 import { CheckCircle2, CircleDashed, Clock, Info, XCircle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';

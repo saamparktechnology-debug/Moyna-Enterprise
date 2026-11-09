@@ -1,3 +1,4 @@
+//apps/api/src/features/stock/stock-posting.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import type { MovementType, SerialUnitState, StockState } from '@prisma/client';
 import { Prisma } from '@prisma/client';

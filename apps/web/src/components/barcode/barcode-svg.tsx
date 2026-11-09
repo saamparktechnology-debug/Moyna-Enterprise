@@ -1,3 +1,4 @@
+//apps/web/src/components/barcode/barcode-svg.tsx
 import { useMemo } from 'react';
 import { isValidEan13 } from '@erp/contracts';
 import { ean13Modules } from './ean13';

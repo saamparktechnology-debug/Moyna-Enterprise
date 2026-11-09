@@ -1,3 +1,4 @@
+//apps/web/src/components/forms/barcode-input.tsx
 import { ScanLine } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';

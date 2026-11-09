@@ -1,3 +1,4 @@
+//apps/web/src/features/customers/customers-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { Customer, KycStatusName } from '@erp/contracts';

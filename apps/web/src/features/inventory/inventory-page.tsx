@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/inventory-page.tsx
 import { useState } from 'react';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';

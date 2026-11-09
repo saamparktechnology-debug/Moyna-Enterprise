@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/adjustment-form-dialog.tsx
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';

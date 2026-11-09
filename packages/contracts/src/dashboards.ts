@@ -127,6 +127,8 @@ export const BranchPerformanceSchema = z.object({
   lowStockItems: z.number().int(),
   batteriesExpired: z.number().int(),
   batteriesExpiring: z.number().int(),
+  /** Open lead follow-ups due today (India time), whatever the time of day. */
+  followupsDueToday: z.number().int(),
 });
 export type BranchPerformance = z.infer<typeof BranchPerformanceSchema>;
 
@@ -140,6 +142,10 @@ export const CompanyDashboardSchema = z.object({
   stock: StockFiguresSchema,
   dues: DueFiguresSchema,
   leads: LeadFiguresSchema,
+  followups: z.object({
+    /** Open lead follow-ups due today (India time), whatever the time of day, added up over the branches. */
+    dueToday: z.number().int(),
+  }),
   commissions: z.object({
     /** What is owed to brokers now, after credit notes took their share back. */
     payable: MoneyStringSchema,
@@ -172,8 +178,11 @@ export const BranchDashboardSchema = z.object({
   dues: DueFiguresSchema,
   followups: z.object({
     overdue: z.number().int(),
+    /** Due later today: the time has not come yet. */
     today: z.number().int(),
     upcoming: z.number().int(),
+    /** Everything due today, whatever the time of day, including what is already past. */
+    dueToday: z.number().int(),
   }),
   leads: LeadFiguresSchema,
   alerts: z.object({

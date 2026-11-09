@@ -1,3 +1,4 @@
+//apps\web\src\features\billing\test-data.ts
 import type { Customer, Invoice, InvoicePreview, InvoiceSummary } from '@erp/contracts';
 import { jsonResponse, makeSession, signedIn } from '@/test/fetch-mock';
 import type { RouteHandler } from '@/test/fetch-mock';
@@ -114,6 +115,7 @@ export function summaryOf(invoice: Invoice): InvoiceSummary {
     dueDate: invoice.dueDate,
     total: invoice.total,
     lineCount: invoice.lines.length,
+    profit: invoice.profit ?? null,
     createdAt: invoice.createdAt,
   };
 }

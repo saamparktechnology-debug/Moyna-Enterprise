@@ -1,3 +1,4 @@
+//apps\web\src\app\app-layout.tsx
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { CommandPalette } from '@/components/command-palette';

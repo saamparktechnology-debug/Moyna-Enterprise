@@ -47,6 +47,58 @@ export const InvoiceLineInputSchema = z
   });
 export type InvoiceLineInput = z.input<typeof InvoiceLineInputSchema>;
 
+export const INVOICE_COMMISSION_TYPES = ['NONE', 'FIXED', 'GIFT'] as const;
+export const InvoiceCommissionTypeSchema = z.enum(INVOICE_COMMISSION_TYPES);
+export type InvoiceCommissionTypeName = z.infer<typeof InvoiceCommissionTypeSchema>;
+
+/**
+ * What was agreed with the broker at the time of the sale. `FIXED` is an amount of money; `GIFT` is a named gift with its
+ * value (the gift is not stock, and nothing is taken from the stock ledger for it). The photo of a gift is added to the
+ * draft afterwards.
+ */
+export const InvoiceCommissionInputSchema = z
+  .object({
+    type: InvoiceCommissionTypeSchema,
+    amount: MoneyAmountSchema.optional(),
+    giftName: z
+      .string()
+      .trim()
+      .min(1, 'Enter the name of the gift')
+      .max(120, 'Use at most 120 characters')
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.type === 'NONE') {
+      if (value.amount !== undefined || value.giftName !== undefined)
+        context.addIssue({
+          code: 'custom',
+          path: ['type'],
+          message: 'No commission has no amount or gift',
+        });
+      return;
+    }
+    if (value.amount === undefined || !(Number(value.amount) > 0))
+      context.addIssue({
+        code: 'custom',
+        path: ['amount'],
+        message:
+          value.type === 'GIFT' ? 'Enter the value of the gift' : 'Enter the commission amount',
+      });
+    if (value.type === 'GIFT' && value.giftName === undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['giftName'],
+        message: 'Enter the name of the gift',
+      });
+    if (value.type === 'FIXED' && value.giftName !== undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['giftName'],
+        message: 'A fixed commission has no gift',
+      });
+  });
+export type InvoiceCommissionInput = z.input<typeof InvoiceCommissionInputSchema>;
+
 const InvoiceBodyShape = {
   customerId: z.uuid('Choose the customer'),
   type: InvoiceTypeSchema,
@@ -57,7 +109,21 @@ const InvoiceBodyShape = {
   dueDate: DateOnlySchema.nullable().default(null),
   /** The broker who brought the sale. Commission is worked out for them when the invoice is issued. */
   brokerId: z.uuid().nullable().default(null),
+  /** What was agreed with that broker for this sale. Only with a broker. */
+  commission: InvoiceCommissionInputSchema.nullable().default(null),
 };
+
+function commissionNeedsBroker(
+  value: { brokerId: string | null; commission: unknown },
+  context: z.RefinementCtx,
+): void {
+  if (value.commission !== null && value.brokerId === null)
+    context.addIssue({
+      code: 'custom',
+      path: ['commission'],
+      message: 'Choose the broker before agreeing a commission',
+    });
+}
 
 function noRepeatedSerials(
   value: { lines: { serialUnitId?: string | undefined }[] },
@@ -78,12 +144,14 @@ function noRepeatedSerials(
 
 export const CreateInvoiceRequestSchema = z
   .object({ ...InvoiceBodyShape, branchId: z.uuid().optional() })
-  .superRefine(noRepeatedSerials);
+  .superRefine(noRepeatedSerials)
+  .superRefine(commissionNeedsBroker);
 export type CreateInvoiceRequest = z.input<typeof CreateInvoiceRequestSchema>;
 
 export const UpdateInvoiceRequestSchema = z
   .object({ ...InvoiceBodyShape, rowVersion: z.number().int().min(1) })
-  .superRefine(noRepeatedSerials);
+  .superRefine(noRepeatedSerials)
+  .superRefine(commissionNeedsBroker);
 export type UpdateInvoiceRequest = z.input<typeof UpdateInvoiceRequestSchema>;
 
 export const PreviewInvoiceRequestSchema = CreateInvoiceRequestSchema;
@@ -139,6 +207,10 @@ export const InvoiceLineSchema = z.object({
   amount: z.string(),
   serialUnitId: z.string().nullable(),
   serialNo: z.string().nullable(),
+  /** What one unit cost, as the viewer may know it: the real cost for a Super Admin, the shown cost for everyone else. */
+  unitCost: z.string().nullable().optional(),
+  /** Taxable amount less cost for the line, worked out with the same cost. `null` when no cost was recorded. */
+  profit: z.string().nullable().optional(),
 });
 export type InvoiceLine = z.infer<typeof InvoiceLineSchema>;
 
@@ -155,6 +227,17 @@ export const InvoiceSchema = z.object({
   branchGstin: z.string().nullable(),
   brokerId: z.string().nullable(),
   brokerName: z.string().nullable(),
+  /** What was agreed with the broker for this sale; `null` when nothing was agreed on the invoice. */
+  commission: z
+    .object({
+      type: InvoiceCommissionTypeSchema,
+      amount: z.string().nullable(),
+      giftName: z.string().nullable(),
+      hasPhoto: z.boolean(),
+      photoFileName: z.string().nullable(),
+    })
+    .nullable()
+    .optional(),
   /** The quotation this invoice delivers, when it came from one. */
   quotationId: z.string().nullable(),
   quotationNo: z.string().nullable(),
@@ -165,6 +248,8 @@ export const InvoiceSchema = z.object({
   dueDate: z.string().nullable(),
   ...TotalsShape,
   lines: z.array(InvoiceLineSchema),
+  /** Profit on an issued invoice for this viewer (see `InvoiceLine.unitCost`). `null` when it cannot be worked out. */
+  profit: z.string().nullable().optional(),
   replacesInvoiceId: z.string().nullable(),
   replacesInvoiceNo: z.string().nullable(),
   cancelledAt: z.string().nullable(),
@@ -195,6 +280,8 @@ export const InvoiceSummarySchema = z.object({
   dueDate: z.string().nullable(),
   total: z.string(),
   lineCount: z.number().int(),
+  /** Profit on an issued invoice for this viewer: taxable value less cost. `null` when it cannot be worked out. */
+  profit: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type InvoiceSummary = z.infer<typeof InvoiceSummarySchema>;
@@ -206,6 +293,12 @@ export const InvoiceListQuerySchema = PaginationQuerySchema.extend({
   type: z.enum(['all', ...INVOICE_TYPES]).default('all'),
   customerId: z.uuid().optional(),
   branchId: z.uuid().optional(),
+  /** Only invoices that sold something from this group (a top-level category, with everything under it). */
+  groupId: z.uuid().optional(),
+  /** Only invoices that sold something from this product category. */
+  categoryId: z.uuid().optional(),
+  /** Only invoices of sales this broker brought. */
+  brokerId: z.uuid().optional(),
   from: DateOnlySchema.optional(),
   to: DateOnlySchema.optional(),
 });

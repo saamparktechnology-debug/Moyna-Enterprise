@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/purchasing-shared.tsx
 import { useState } from 'react';
 import type { Item, PurchaseOrder, Supplier } from '@erp/contracts';
 import { FormField, Input } from '@/components/form-field';

@@ -1,3 +1,4 @@
+//apps/web/src/features/dashboard/use-dashboard.ts
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getBranchDashboard, getCompanyDashboard } from './dashboard-api';
 import type { DashboardParams } from './dashboard-api';

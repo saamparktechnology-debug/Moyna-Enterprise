@@ -1,3 +1,4 @@
+//apps/api/src/features/reports/pdf-exporter.ts
 import type { ExportableReport, ReportCellValue, ReportExporter } from './export-types.js';
 
 // Helvetica character widths (1/1000 em) for the printable ASCII characters 32 to 126.

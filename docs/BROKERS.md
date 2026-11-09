@@ -59,3 +59,10 @@ Reductions are rows in `commission_adjustments`, added and never changed; the co
 - **Recovery of money paid and since lowered** is shown, not settled or offset against later payouts.
 - A broker has one rule at a time and an invoice one broker. There is no per-item or tiered rule.
 - **Not built:** brokers on leads (the `leads.broker_id` column is still unused), reminders for unpaid commission (module 5.2), a commission report (module 5.4).
+
+## Address, photo, documents and commission agreed on the invoice (chunk 2)
+
+- A broker has an optional address, one photo (JPEG or PNG) and up to 20 documents (PDF, JPEG or PNG, each up to 5 MB, with an optional name such as "Aadhaar card"). Managing them needs `brokers.manage`; viewing needs `brokers.view`. Viewing a document is audited.
+- The broker's cut is decided at billing time. On a draft invoice with a broker the seller chooses No commission, Fixed amount, or Gift (name and value, with a photo added from the saved draft). A broker no longer needs a standing rule.
+- On issue, a fixed amount or a gift becomes the commission (never more than the taxable value). A gift is not stock. A gift is paid out like any other commission. Credit notes and cancellations take back their share in the usual way.
+- Where nothing was agreed on the invoice (older drafts, invoices made from a quotation), the broker's standing rule is used if there is one.

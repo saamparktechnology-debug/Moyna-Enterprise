@@ -1,3 +1,4 @@
+//apps/web/src/features/settings/series-section.tsx
 import { useState } from 'react';
 import { DOCUMENT_TYPES } from '@erp/contracts';
 import type { DocumentSeries } from '@erp/contracts';

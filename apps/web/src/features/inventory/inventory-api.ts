@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/inventory-api.ts
 import {
   AdjustmentListResponseSchema,
   LowStockListResponseSchema,

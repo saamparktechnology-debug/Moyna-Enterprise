@@ -1,3 +1,4 @@
+//apps/web/src/features/settings/rates-section.tsx
 import { useState } from 'react';
 import { Alert } from '@/components/alert';
 import { SimpleTable } from '@/components/data-table/simple-table';

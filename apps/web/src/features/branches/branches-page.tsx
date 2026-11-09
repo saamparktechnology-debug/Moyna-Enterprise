@@ -1,3 +1,4 @@
+//apps/web/src/features/branches/branches-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { Branch } from '@erp/contracts';

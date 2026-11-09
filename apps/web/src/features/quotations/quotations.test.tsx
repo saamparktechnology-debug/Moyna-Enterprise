@@ -1,6 +1,7 @@
+//apps/web/src/features/quotations/quotations.test.tsx
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Quotation, QuotationSummary } from '@erp/contracts';
 import { jsonResponse, makeSession, routeFetch, signedIn } from '@/test/fetch-mock';
 import type { RouteHandler } from '@/test/fetch-mock';
@@ -647,5 +648,115 @@ describe('who sees what', () => {
   it('lists Quotations in the menu for people who may view them', async () => {
     open(handlers(VIEWER));
     expect(await screen.findByRole('link', { name: 'Quotations' })).toBeInTheDocument();
+  });
+});
+
+describe('the receipt for an advance', () => {
+  const WITH_RECEIPTS = [...WORKER, 'payments.view'];
+  const pdf = () =>
+    new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } });
+  const create = vi.fn(() => 'blob:receipt');
+  const revoke = vi.fn();
+  beforeEach(() => {
+    create.mockClear();
+    revoke.mockClear();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('can be viewed for each advance, ready to print or open in a new tab', async () => {
+    const { calls } = open(
+      handlers(WITH_RECEIPTS, quotation(), { 'GET /api/payments/pay-1/receipt': pdf }),
+    );
+    const dialog = await openQuote();
+    await userEvent.click(
+      await within(dialog).findByRole('button', { name: 'View receipt HQRCT/2627/00007' }),
+    );
+    const preview = await within(dialog).findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByTitle('Receipt HQRCT/2627/00007')).toHaveAttribute(
+      'src',
+      'blob:receipt',
+    );
+    expect(within(preview).getByRole('link', { name: 'Open in new tab' })).toHaveAttribute(
+      'href',
+      'blob:receipt',
+    );
+    expect(calls.some((c) => c.key === 'GET /api/payments/pay-1/receipt')).toBe(true);
+    await userEvent.click(within(preview).getByRole('button', { name: 'Close preview' }));
+    expect(
+      within(dialog).queryByRole('region', { name: 'Document preview' }),
+    ).not.toBeInTheDocument();
+    expect(revoke).toHaveBeenCalledWith('blob:receipt');
+  });
+
+  it('is not offered to someone who may not view payments', async () => {
+    open(handlers(WORKER));
+    const dialog = await openQuote();
+    await within(dialog).findByRole('table', { name: 'Advances' });
+    expect(within(dialog).queryByRole('button', { name: /View receipt/ })).not.toBeInTheDocument();
+  });
+
+  it('opens by itself as soon as an advance is taken, so the customer can be handed it', async () => {
+    const newAdvance = {
+      paymentId: 'pay-2',
+      receiptNo: 'HQRCT/2627/00008',
+      mode: 'CASH',
+      modeName: 'Cash',
+      amount: '10000.00',
+      paidOn: '2026-10-10',
+      reference: null,
+      status: 'ACTIVE' as const,
+    };
+    const after = quotation({
+      advances: [...quotation().advances, newAdvance],
+      advancePaid: '35000.00',
+      balanceDue: '60000.00',
+    });
+    const { calls } = open(
+      handlers(WITH_RECEIPTS, quotation(), {
+        [`POST /api/quotations/${QUOTE_ID}/advance`]: () => jsonResponse(after, 201),
+        'GET /api/payments/pay-2/receipt': pdf,
+      }),
+    );
+    const dialog = await openQuote();
+    await userEvent.type(await within(dialog).findByLabelText('Advance amount'), '10000');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Take advance' }));
+    const preview = await within(dialog).findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByTitle('Receipt HQRCT/2627/00008')).toBeInTheDocument();
+    expect(calls.some((c) => c.key === 'GET /api/payments/pay-2/receipt')).toBe(true);
+    expect(calls.some((c) => c.key === 'GET /api/payments/pay-1/receipt')).toBe(false);
+  });
+
+  it('still takes the advance when the receipt cannot be fetched, without a scare', async () => {
+    const after = quotation({
+      advances: [
+        ...quotation().advances,
+        {
+          paymentId: 'pay-3',
+          receiptNo: 'HQRCT/2627/00009',
+          mode: 'CASH',
+          modeName: 'Cash',
+          amount: '500.00',
+          paidOn: '2026-10-10',
+          reference: null,
+          status: 'ACTIVE',
+        },
+      ],
+    });
+    open(
+      handlers(WITH_RECEIPTS, quotation(), {
+        [`POST /api/quotations/${QUOTE_ID}/advance`]: () => jsonResponse(after, 201),
+        'GET /api/payments/pay-3/receipt': () =>
+          jsonResponse({ code: 'FORBIDDEN', message: 'No', details: [], requestId: 'r' }, 403),
+      }),
+    );
+    const dialog = await openQuote();
+    await userEvent.type(await within(dialog).findByLabelText('Advance amount'), '500');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Take advance' }));
+    await waitFor(() => expect(within(dialog).getByLabelText('Advance amount')).toHaveValue(''));
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('region', { name: 'Document preview' }),
+    ).not.toBeInTheDocument();
   });
 });

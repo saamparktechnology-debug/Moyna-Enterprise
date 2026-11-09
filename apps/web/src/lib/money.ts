@@ -1,3 +1,4 @@
+//apps/web/src/lib/money.ts
 /**
  * Decimal text handling for money. Amounts are strings from the keyboard to the API (`"1250.50"`), so
  * nothing here converts to a floating-point number and rounding can never change a figure.

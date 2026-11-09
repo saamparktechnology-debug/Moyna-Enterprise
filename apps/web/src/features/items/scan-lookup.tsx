@@ -1,3 +1,4 @@
+//apps/web/src/features/items/scan-lookup.tsx
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Item } from '@erp/contracts';

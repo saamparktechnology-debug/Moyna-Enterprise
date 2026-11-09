@@ -1,3 +1,4 @@
+//apps/web/src/features/batteries/batteries-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DEFAULT_EXPIRY_WINDOW_DAYS } from '@erp/contracts';

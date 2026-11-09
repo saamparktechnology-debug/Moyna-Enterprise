@@ -1,3 +1,4 @@
+//apps/web/src/components/ui/skeleton.tsx
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 

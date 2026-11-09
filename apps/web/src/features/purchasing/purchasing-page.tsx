@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/purchasing-page.tsx
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { PageContainer } from '@/components/page-container';

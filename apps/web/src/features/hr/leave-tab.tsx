@@ -1,3 +1,4 @@
+//apps/web/src/features/hr/leave-tab.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { LEAVE_STATUSES } from '@erp/contracts';

@@ -1,3 +1,4 @@
+//apps/web/src/lib/session-events.ts
 type Listener = () => void;
 
 const listeners = new Set<Listener>();

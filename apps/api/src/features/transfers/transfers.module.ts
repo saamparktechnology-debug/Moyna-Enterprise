@@ -1,3 +1,4 @@
+//apps/api/src/features/transfers/transfers.module.ts
 import { Module } from '@nestjs/common';
 import { ItemsModule } from '../items/items.module.js';
 import { StockModule } from '../stock/stock.module.js';

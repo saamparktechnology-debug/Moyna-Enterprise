@@ -1,3 +1,4 @@
+//apps/web/src/app/app-topbar.tsx
 import { PanelLeft, PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react';
 import { useLocation } from 'react-router';
 import { useMediaQuery } from '@/lib/use-media-query';

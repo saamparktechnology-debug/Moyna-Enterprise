@@ -1,3 +1,4 @@
+//apps/web/src/components/barcode/ean13.test.ts
 import { describe, expect, it } from 'vitest';
 import { ean13Modules } from './ean13';
 

@@ -1,3 +1,4 @@
+//apps/api/src/features/payments/payments.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ApplyPaymentRequestSchema,
@@ -34,6 +35,8 @@ import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
 import { planAutomaticAllocation } from './allocation.js';
+import { buildReceiptPdf } from './receipt-pdf.js';
+import type { ReceiptPdfData } from './receipt-pdf.js';
 import type { PlannedAllocation } from './allocation.js';
 import { balancesSql } from './balances.js';
 import type { BalanceRow } from './balances.js';
@@ -105,6 +108,59 @@ export class PaymentsService {
     return this.transactions.run(async (tx) => {
       const row = await this.load(tx, id);
       return toPaymentDto(row, await this.userNames(tx, userIdsOf([row])));
+    });
+  }
+
+  /**
+   * The receipt for one payment, as a PDF. For an advance on a quotation it is an advance receipt that also says what the
+   * order is worth, what is held and what is still to pay. A reversed payment says so on the page.
+   */
+  async receipt(id: string): Promise<{ body: Buffer; fileName: string }> {
+    return this.transactions.run(async (tx) => {
+      const row = await tx.payment.findUnique({
+        where: { id },
+        include: {
+          branch: { select: { name: true } },
+          customer: { select: { name: true, phone: true } },
+          paymentMode: { select: { name: true } },
+          reversal: true,
+          quotation: { select: { quotationNo: true, total: true } },
+        },
+      });
+      if (!row) throw new NotFoundError('Payment', id);
+      let advance: ReceiptPdfData['advance'] = null;
+      if (row.quotationId && row.quotation) {
+        const held = await tx.payment.aggregate({
+          where: { quotationId: row.quotationId, reversal: null },
+          _sum: { amount: true },
+        });
+        const heldTotal = held._sum.amount ?? new Prisma.Decimal(0);
+        const balance = Prisma.Decimal.max(row.quotation.total.minus(heldTotal), 0);
+        advance = {
+          quotationNo: row.quotation.quotationNo,
+          quotationTotal: row.quotation.total.toFixed(2),
+          heldTotal: heldTotal.toFixed(2),
+          balanceDue: balance.toFixed(2),
+        };
+      }
+      const body = buildReceiptPdf({
+        receiptNo: row.receiptNo,
+        paidOn: row.paidOn.toISOString().slice(0, 10),
+        branchName: row.branch.name,
+        customerName: row.customer.name,
+        customerPhone: row.customer.phone,
+        modeName: row.paymentMode.name,
+        reference: row.reference,
+        amount: row.amount.toFixed(2),
+        advance,
+        reversed: row.reversal
+          ? {
+              on: row.reversal.reversedOn.toISOString().slice(0, 10),
+              reason: row.reversal.reason,
+            }
+          : null,
+      });
+      return { body, fileName: `${row.receiptNo.replace(/[^A-Za-z0-9._-]/g, '-')}.pdf` };
     });
   }
 

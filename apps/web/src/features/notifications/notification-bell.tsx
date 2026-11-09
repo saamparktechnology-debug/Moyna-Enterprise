@@ -1,3 +1,4 @@
+//apps/web/src/features/notifications/notification-bell.tsx
 import { Bell } from 'lucide-react';
 import { Link } from 'react-router';
 import { buttonVariants } from '@/components/ui/button';

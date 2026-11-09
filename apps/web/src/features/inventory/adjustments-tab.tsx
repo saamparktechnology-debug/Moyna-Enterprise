@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/adjustments-tab.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { StockAdjustment } from '@erp/contracts';

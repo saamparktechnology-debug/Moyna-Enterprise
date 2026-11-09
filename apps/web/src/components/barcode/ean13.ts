@@ -1,3 +1,4 @@
+//apps/web/src/components/barcode/ean13.ts
 import { isValidEan13 } from '@erp/contracts';
 
 const L_CODES = [

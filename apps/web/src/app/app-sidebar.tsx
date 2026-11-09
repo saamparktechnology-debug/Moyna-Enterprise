@@ -1,3 +1,4 @@
+//apps/web/src/app/app-sidebar.tsx
 import { ChevronDown, Search, Boxes } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';

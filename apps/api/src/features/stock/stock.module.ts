@@ -1,3 +1,4 @@
+//apps/api/src/features/stock/stock.module.ts
 import { Module } from '@nestjs/common';
 import { StockAdjustmentsController } from './stock-adjustments.controller.js';
 import { StockAdjustmentsService } from './stock-adjustments.service.js';

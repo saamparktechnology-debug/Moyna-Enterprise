@@ -1,3 +1,4 @@
+//apps/api/test/integration/quotations.int.test.ts
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   DueListResponseSchema,
@@ -464,6 +465,56 @@ describe('quotations and custom orders', () => {
       await expect(
         owner.$executeRaw`UPDATE quotations SET status = 'CONVERTED' WHERE id = ${q.id}::uuid`,
       ).rejects.toThrow(/cannot move from/);
+    });
+  });
+
+  describe('the receipt for an advance', () => {
+    const receipt = (client: TestClient, paymentId: string) =>
+      client.get(`/payments/${paymentId}/receipt`);
+
+    it('gives a printable advance receipt that names the quotation, what is held and what is left', async () => {
+      const a = await accepted();
+      const paid = await take(a, '30000.00');
+      const advanceRow = paid.advances[0];
+      const response = await receipt(staffA, advanceRow?.paymentId ?? '');
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('application/pdf');
+      expect(response.headers['content-disposition']).toContain('attachment');
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      const text = Buffer.from(response.body as Buffer).toString('latin1');
+      expect(text.startsWith('%PDF-')).toBe(true);
+      expect(text).toContain('ADVANCE RECEIPT');
+      expect(text).toContain(advanceRow?.receiptNo ?? 'x');
+      expect(text).toContain(a.quotationNo);
+      expect(text).toContain('30000.00');
+      expect(text).toContain('65000.00');
+    });
+
+    it('counts every advance held in the balance, and says plainly when one was reversed', async () => {
+      const a = await accepted();
+      await take(a, '10000.00');
+      const second = await take(a, '5000.00');
+      const newest = second.advances.find((item) => item.amount === '5000.00');
+      const before = await receipt(staffA, newest?.paymentId ?? '');
+      expect(Buffer.from(before.body as Buffer).toString('latin1')).toContain('15000.00');
+
+      const reversed = await adminA.post(`/payments/${newest?.paymentId}/reverse`, {
+        reason: 'Cheque bounced',
+      });
+      expect(reversed.status, JSON.stringify(reversed.body)).toBe(200);
+      const after = Buffer.from(
+        (await receipt(staffA, newest?.paymentId ?? '')).body as Buffer,
+      ).toString('latin1');
+      expect(after).toContain('REVERSED on');
+      expect(after).toContain('Cheque bounced');
+      expect(after).toContain('10000.00');
+    });
+
+    it('is refused for someone who may not view payments, and unknown ids are not found', async () => {
+      const a = await accepted();
+      const paid = await take(a, '1000.00');
+      expect((await receipt(staffA, '0b6f6a8e-5a56-4a1c-9b1e-0f1d2c3b4a59')).status).toBe(404);
+      expect((await receipt(noPay, paid.advances[0]?.paymentId ?? '')).status).toBe(403);
     });
   });
 

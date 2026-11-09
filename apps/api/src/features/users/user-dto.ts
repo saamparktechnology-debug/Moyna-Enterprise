@@ -1,3 +1,4 @@
+//apps/api/src/features/users/user-dto.ts
 import { highestTier } from '@erp/permissions';
 import type { RoleTier } from '@erp/permissions';
 import type { User } from '@erp/contracts';

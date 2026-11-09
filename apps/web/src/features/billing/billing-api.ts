@@ -1,3 +1,4 @@
+//apps/web/src/features/billing/billing-api.ts
 import { z } from 'zod';
 import { InvoiceListResponseSchema, InvoicePreviewSchema, InvoiceSchema } from '@erp/contracts';
 import type {
@@ -17,6 +18,10 @@ export interface InvoiceListParams {
   search: string;
   status: string;
   type: string;
+  /** Only invoices that sold something from this group, product category, or that this broker brought. */
+  groupId?: string | undefined;
+  categoryId?: string | undefined;
+  brokerId?: string | undefined;
   /** One of `INVOICE_SORT_FIELDS`. Left out until the person picks a column. */
   sortBy?: string | undefined;
   sortOrder?: 'asc' | 'desc' | undefined;
@@ -46,6 +51,24 @@ export function previewInvoice(values: CreateInvoiceRequest): Promise<InvoicePre
 
 export function createInvoice(values: CreateInvoiceRequest): Promise<Invoice> {
   return api.post('/invoices', values, InvoiceSchema);
+}
+
+/** Adds or replaces the photo of the gift agreed on a draft invoice (JPEG or PNG). */
+export function uploadGiftPhoto(id: string, file: File): Promise<Invoice> {
+  return api.upload(
+    `/invoices/${id}/gift-photo?${query({ fileName: file.name })}`,
+    file,
+    {},
+    InvoiceSchema,
+  );
+}
+
+export function deleteGiftPhoto(id: string): Promise<Invoice> {
+  return api.delete(`/invoices/${id}/gift-photo`, InvoiceSchema);
+}
+
+export function downloadInvoiceGiftPhoto(id: string): Promise<Blob> {
+  return api.download(`/invoices/${id}/gift-photo`);
 }
 
 export function updateInvoice(id: string, values: UpdateInvoiceRequest): Promise<Invoice> {

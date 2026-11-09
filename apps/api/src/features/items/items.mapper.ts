@@ -1,3 +1,4 @@
+//apps\api\src\features\items\items.mapper.ts
 import { Prisma } from '@prisma/client';
 import type { Item } from '@erp/contracts';
 
@@ -10,7 +11,12 @@ export const ITEM_INCLUDE = {
 
 export type ItemRow = Prisma.ItemGetPayload<{ include: typeof ITEM_INCLUDE }>;
 
-export function toItemDto(row: ItemRow): Item {
+/** Who is looking. Only a Super Admin may see the real purchase price. */
+export interface ItemViewer {
+  isSuperAdmin: boolean;
+}
+
+export function toItemDto(row: ItemRow, viewer: ItemViewer): Item {
   return {
     id: row.id,
     itemCode: row.itemCode,
@@ -25,6 +31,8 @@ export function toItemDto(row: ItemRow): Item {
     reorderLevel: row.reorderLevel,
     isSerialized: row.isSerialized,
     isActive: row.isActive,
+    actualPurchasePrice: viewer.isSuperAdmin ? (row.actualPurchasePrice?.toFixed(2) ?? null) : null,
+    displayPurchasePrice: row.displayPurchasePrice?.toFixed(2) ?? null,
     barcodes: row.itemBarcodes.map((barcode) => ({ id: barcode.id, barcode: barcode.barcode })),
     rowVersion: row.rowVersion,
     createdAt: row.createdAt.toISOString(),
@@ -43,5 +51,8 @@ export function itemSnapshot(row: ItemRow): Record<string, unknown> {
     reorderLevel: row.reorderLevel,
     isSerialized: row.isSerialized,
     isActive: row.isActive,
+    // The audit log is readable by managers, so the real price is recorded only as "set or not".
+    displayPurchasePrice: row.displayPurchasePrice?.toFixed(2) ?? null,
+    actualPurchasePriceSet: row.actualPurchasePrice !== null,
   };
 }

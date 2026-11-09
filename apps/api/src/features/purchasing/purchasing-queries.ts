@@ -1,3 +1,5 @@
+//apps/api/src/features/purchasing/purchasing-queries.ts
+
 import type { PurchaseOrderStatus } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';

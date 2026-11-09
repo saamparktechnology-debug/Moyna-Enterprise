@@ -1,3 +1,4 @@
+//apps/web/src/features/billing/credit-notes-tab.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { CREDIT_NOTE_STATUSES } from '@erp/contracts';

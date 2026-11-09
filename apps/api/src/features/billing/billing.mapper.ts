@@ -7,6 +7,8 @@ import type {
   InvoiceTypeName,
 } from '@erp/contracts';
 import { isInterState } from './invoice-calc.js';
+import { invoiceProfit, lineProfit, unitCostFor } from './profit.js';
+import type { ProfitLine, ProfitViewer } from './profit.js';
 
 export const INVOICE_INCLUDE = {
   branch: true,
@@ -26,7 +28,12 @@ const day = (value: Date | null): string | null =>
   value ? value.toISOString().slice(0, 10) : null;
 const money = (value: { toFixed: (places: number) => string }): string => value.toFixed(2);
 
-export function toLineDto(line: InvoiceRow['invoiceLines'][number]): InvoiceLine {
+export function toLineDto(
+  line: InvoiceRow['invoiceLines'][number],
+  viewer: ProfitViewer,
+): InvoiceLine {
+  const cost = unitCostFor(line, viewer);
+  const profit = lineProfit(line, viewer);
   return {
     id: line.id,
     itemId: line.itemId,
@@ -45,10 +52,38 @@ export function toLineDto(line: InvoiceRow['invoiceLines'][number]): InvoiceLine
     amount: money(line.amount),
     serialUnitId: line.serialUnitId,
     serialNo: line.serialUnit?.serialNo ?? null,
+    unitCost: cost === null ? null : money(cost),
+    profit: profit === null ? null : money(profit),
   };
 }
 
-export function toInvoiceDto(row: InvoiceRow): Invoice {
+/** Profit counts only for an issued invoice; a draft or a cancelled one has made no sale. */
+function profitOf(
+  row: { status: string; invoiceLines: readonly ProfitLine[] },
+  viewer: ProfitViewer,
+): string | null {
+  if (row.status !== 'ISSUED') return null;
+  const profit = invoiceProfit(row.invoiceLines, viewer);
+  return profit === null ? null : money(profit);
+}
+
+function commissionOf(row: InvoiceRow): Invoice['commission'] {
+  if (
+    row.commissionType !== 'NONE' &&
+    row.commissionType !== 'FIXED' &&
+    row.commissionType !== 'GIFT'
+  )
+    return null;
+  return {
+    type: row.commissionType,
+    amount: row.commissionAmount?.toFixed(2) ?? null,
+    giftName: row.giftName,
+    hasPhoto: row.giftPhotoKey !== null,
+    photoFileName: row.giftPhotoFileName,
+  };
+}
+
+export function toInvoiceDto(row: InvoiceRow, viewer: ProfitViewer): Invoice {
   return {
     id: row.id,
     invoiceNo: row.invoiceNo,
@@ -62,6 +97,7 @@ export function toInvoiceDto(row: InvoiceRow): Invoice {
     branchGstin: row.branchGstin,
     brokerId: row.brokerId,
     brokerName: row.broker?.name ?? null,
+    commission: commissionOf(row),
     quotationId: row.quotationId,
     quotationNo: row.quotation?.quotationNo ?? null,
     placeOfSupply: row.placeOfSupply,
@@ -76,7 +112,8 @@ export function toInvoiceDto(row: InvoiceRow): Invoice {
     igstAmount: money(row.igstAmount),
     roundOff: money(row.roundOff),
     total: money(row.total),
-    lines: row.invoiceLines.map(toLineDto),
+    lines: row.invoiceLines.map((line) => toLineDto(line, viewer)),
+    profit: profitOf(row, viewer),
     replacesInvoiceId: row.replacesInvoiceId,
     replacesInvoiceNo: row.replaces?.invoiceNo ?? null,
     cancelledAt: row.cancelledAt?.toISOString() ?? null,
@@ -88,10 +125,22 @@ export function toInvoiceDto(row: InvoiceRow): Invoice {
 }
 
 export type SummaryRow = Prisma.InvoiceGetPayload<{
-  include: { branch: true; customer: true; _count: { select: { invoiceLines: true } } };
+  include: {
+    branch: true;
+    customer: true;
+    _count: { select: { invoiceLines: true } };
+    invoiceLines: {
+      select: {
+        qty: true;
+        taxableAmount: true;
+        unitCostActual: true;
+        unitCostDisplay: true;
+      };
+    };
+  };
 }>;
 
-export function toSummaryDto(row: SummaryRow): InvoiceSummary {
+export function toSummaryDto(row: SummaryRow, viewer: ProfitViewer): InvoiceSummary {
   return {
     id: row.id,
     invoiceNo: row.invoiceNo,
@@ -103,6 +152,7 @@ export function toSummaryDto(row: SummaryRow): InvoiceSummary {
     dueDate: day(row.dueDate),
     total: money(row.total),
     lineCount: row._count.invoiceLines,
+    profit: profitOf(row, viewer),
     createdAt: row.createdAt.toISOString(),
   };
 }

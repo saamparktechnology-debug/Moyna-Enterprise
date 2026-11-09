@@ -413,6 +413,8 @@ model Item {
   reorderLevel Int @default(0) @map("reorder_level")
   isSerialized Boolean @default(false) @map("is_serialized")
   isActive Boolean @default(true) @map("is_active")
+  actualPurchasePrice Decimal? @map("actual_purchase_price") @db.Decimal(14, 2)
+  displayPurchasePrice Decimal? @map("display_purchase_price") @db.Decimal(14, 2)
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
@@ -848,6 +850,7 @@ model Broker {
   id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
   name String @map("name")
   phone String? @unique @map("phone")
+  address String? @map("address")
   isActive Boolean @default(true) @map("is_active")
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
@@ -859,7 +862,27 @@ model Broker {
   commissions Commission[] @relation("Commission_broker")
   invoices Invoice[] @relation("Invoice_broker")
   quotations Quotation[] @relation("Quotation_broker")
+  files BrokerFile[] @relation("BrokerFile_broker")
   @@map("brokers")
+}
+
+model BrokerFile {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  brokerId String @map("broker_id") @db.Uuid
+  kind String @map("kind")
+  label String? @map("label")
+  objectKey String @unique @map("object_key")
+  fileName String @map("file_name")
+  mimeType String @map("mime_type")
+  sizeBytes Int @map("size_bytes")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  broker Broker @relation("BrokerFile_broker", fields: [brokerId], references: [id])
+  @@index([brokerId])
+  @@map("broker_files")
 }
 
 model KycDocument {
@@ -899,6 +922,7 @@ model Lead {
   stage LeadStage @default(NEW) @map("stage")
   assignedTo String? @map("assigned_to") @db.Uuid
   interest String? @map("interest")
+  age Int? @map("age") @db.SmallInt
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
@@ -984,9 +1008,15 @@ model Commission {
   branchId String @map("branch_id") @db.Uuid
   brokerId String @map("broker_id") @db.Uuid
   invoiceId String @map("invoice_id") @db.Uuid
-  ruleId String @map("rule_id") @db.Uuid
+  ruleId String? @map("rule_id") @db.Uuid
   amount Decimal @map("amount") @db.Decimal(14, 2)
   status CommissionStatus @default(PAYABLE) @map("status")
+  kind String @default("RULE") @map("kind")
+  giftName String? @map("gift_name")
+  giftPhotoKey String? @map("gift_photo_key")
+  giftPhotoFileName String? @map("gift_photo_file_name")
+  giftPhotoMime String? @map("gift_photo_mime")
+  giftPhotoSize Int? @map("gift_photo_size")
   baseAmount Decimal @map("base_amount") @db.Decimal(14, 2)
   paidAt DateTime? @map("paid_at")
   paidBy String? @map("paid_by") @db.Uuid
@@ -1000,7 +1030,7 @@ model Commission {
   branch Branch @relation("Commission_branch", fields: [branchId], references: [id])
   broker Broker @relation("Commission_broker", fields: [brokerId], references: [id])
   invoice Invoice @relation("Commission_invoice", fields: [invoiceId], references: [id])
-  rule CommissionRule @relation("Commission_rule", fields: [ruleId], references: [id])
+  rule CommissionRule? @relation("Commission_rule", fields: [ruleId], references: [id])
   adjustments CommissionAdjustment[] @relation("CommissionAdjustment_commission")
   @@unique([invoiceId])
   @@index([branchId, createdAt])
@@ -1155,6 +1185,13 @@ model Invoice {
   cancelReason String? @map("cancel_reason")
   replacesInvoiceId String? @map("replaces_invoice_id") @db.Uuid
   brokerId String? @map("broker_id") @db.Uuid
+  commissionType String? @map("commission_type")
+  commissionAmount Decimal? @map("commission_amount") @db.Decimal(14, 2)
+  giftName String? @map("gift_name")
+  giftPhotoKey String? @map("gift_photo_key")
+  giftPhotoFileName String? @map("gift_photo_file_name")
+  giftPhotoMime String? @map("gift_photo_mime")
+  giftPhotoSize Int? @map("gift_photo_size")
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")
@@ -1203,6 +1240,8 @@ model InvoiceLine {
   cgstAmount Decimal @default(0) @map("cgst_amount") @db.Decimal(14, 2)
   sgstAmount Decimal @default(0) @map("sgst_amount") @db.Decimal(14, 2)
   igstAmount Decimal @default(0) @map("igst_amount") @db.Decimal(14, 2)
+  unitCostActual Decimal? @map("unit_cost_actual") @db.Decimal(14, 2)
+  unitCostDisplay Decimal? @map("unit_cost_display") @db.Decimal(14, 2)
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at")

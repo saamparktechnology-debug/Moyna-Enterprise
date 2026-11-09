@@ -1,3 +1,4 @@
+//apps/web/src/features/billing/use-billing.ts
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CancelInvoiceRequest,
@@ -9,6 +10,7 @@ import { listSerialUnits } from '../inventory/inventory-api';
 import {
   cancelInvoice,
   createInvoice,
+  deleteGiftPhoto,
   discardInvoice,
   getInvoice,
   issueInvoice,
@@ -16,6 +18,7 @@ import {
   previewInvoice,
   reissueInvoice,
   updateInvoice,
+  uploadGiftPhoto,
 } from './billing-api';
 import type { InvoiceListParams } from './billing-api';
 
@@ -65,6 +68,14 @@ export function useInvoiceMutations() {
     update: useMutation({
       mutationFn: ({ id, values }: { id: string; values: UpdateInvoiceRequest }) =>
         updateInvoice(id, values),
+      onSuccess: refresh,
+    }),
+    setGiftPhoto: useMutation({
+      mutationFn: ({ id, file }: { id: string; file: File }) => uploadGiftPhoto(id, file),
+      onSuccess: refresh,
+    }),
+    removeGiftPhoto: useMutation({
+      mutationFn: (id: string) => deleteGiftPhoto(id),
       onSuccess: refresh,
     }),
     discard: useMutation({

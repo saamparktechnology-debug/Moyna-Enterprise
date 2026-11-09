@@ -1,3 +1,4 @@
+//apps/web/src/components/data-table/simple-table.tsx
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 

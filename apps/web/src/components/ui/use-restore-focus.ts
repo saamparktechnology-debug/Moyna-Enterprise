@@ -1,3 +1,4 @@
+//apps/web/src/components/ui/use-restore-focus.ts
 import { useRef } from 'react';
 
 type FocusEventHandler = (event: Event) => void;

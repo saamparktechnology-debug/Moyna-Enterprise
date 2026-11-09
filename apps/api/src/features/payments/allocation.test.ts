@@ -1,3 +1,4 @@
+//apps/api/src/features/payments/allocation.test.ts
 import { describe, expect, it } from 'vitest';
 import { fromPaise, planAutomaticAllocation } from './allocation.js';
 

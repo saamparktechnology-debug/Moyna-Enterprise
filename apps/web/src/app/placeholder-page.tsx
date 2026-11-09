@@ -1,3 +1,4 @@
+//apps/web/src/app/placeholder-page.tsx
 interface PlaceholderPageProps {
   title: string;
 }

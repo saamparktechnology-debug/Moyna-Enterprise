@@ -1,3 +1,4 @@
+//apps/web/src/components/can.tsx
 import type { ReactNode } from 'react';
 import { useAuth } from '@/features/auth/auth-provider';
 

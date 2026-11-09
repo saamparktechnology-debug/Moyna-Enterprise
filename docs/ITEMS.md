@@ -29,3 +29,14 @@ Edits send the `rowVersion` they read; a stale version answers 409.
 ## Migration 6 (`20261007000600_items_barcodes`)
 
 Check constraints on item codes and barcodes, a case-insensitive unique index on sibling category names (`item_categories_sibling_name_key`, added to the drift allowlist), the barcode sequence, and the two company-wide stock functions (granted to `erp_app` only).
+
+## HSN codes (chunk 3)
+
+- An item's HSN code is optional and must be 4 to 8 digits. Any such code is accepted: if it is not in the list yet it is added when the item is saved (with the item's GST rate, if it has one). A code that was switched off is refused.
+- A new HSN code brings its GST rate to an item that has none and was not given one; it never replaces a rate the item already has.
+- The Items list shows the HSN code. On a GST invoice, the invoice detail shows the HSN code of each line.
+
+## Printing barcode labels (chunk 4)
+
+- Any item row with a barcode has a **Print label** button (shown to everyone who may view items). It opens the label dialog with one label already prepared; change the number of copies if needed and press **Print**. Several items can still be ticked and printed together with "Print labels (n)".
+- **Print** prepares the labels first if that has not been done, and prints once they are on the page. Changing the copies after preparing clears the prepared labels, so a printout always matches the copies shown. Labels are 50 x 25 mm; barcodes in the EAN-13 format are drawn and any other barcode is printed as text. Preparing labels is recorded in the audit log.

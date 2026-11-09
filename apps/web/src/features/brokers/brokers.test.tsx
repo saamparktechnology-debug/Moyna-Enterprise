@@ -1,6 +1,7 @@
+//apps/web/src/features/brokers/brokers.test.tsx
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Broker, BrokerLedger, Commission } from '@erp/contracts';
 import { jsonResponse, makeSession, routeFetch, signedIn } from '@/test/fetch-mock';
 import type { RouteHandler } from '@/test/fetch-mock';
@@ -232,6 +233,7 @@ describe('adding and editing a broker', () => {
     expect(sent(calls, 'POST /api/brokers').at(-1)?.body).toEqual({
       name: 'Asha Verma',
       phone: '9000000077',
+      address: null,
     });
   });
 
@@ -252,6 +254,7 @@ describe('adding and editing a broker', () => {
     expect(sent(calls, `PATCH /api/brokers/${BROKER_ID}`)[0]?.body).toEqual({
       name: 'Ravi Renamed',
       phone: '9000000001',
+      address: null,
       rowVersion: 3,
     });
   });
@@ -324,7 +327,7 @@ describe('a broker and their rules', () => {
   it('says so when a broker has no rule', async () => {
     open(handlers(MANAGER, broker({ activeRule: null, rules: [] })));
     const dialog = await openBroker();
-    expect(await within(dialog).findByText(/cannot be put on an invoice/)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/no standing rule/)).toBeInTheDocument();
   });
 
   it('opens the ledger with the balance, and says a negative one is money to get back', async () => {
@@ -503,5 +506,246 @@ describe('who sees what', () => {
   it('lists Brokers in the menu for people who may view them', async () => {
     open(handlers(VIEWER));
     expect(await screen.findByRole('link', { name: 'Brokers' })).toBeInTheDocument();
+  });
+});
+
+describe('broker address, photo and documents', () => {
+  const create = vi.fn(() => 'blob:broker-file');
+  const revoke = vi.fn();
+  beforeEach(() => {
+    create.mockClear();
+    revoke.mockClear();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const picture = () =>
+    new Response('png-bytes', { status: 200, headers: { 'content-type': 'image/png' } });
+  const withPhoto = (over: Partial<Broker> = {}): Broker =>
+    broker({
+      address: '12 Station Road, Howrah',
+      hasPhoto: true,
+      photo: {
+        id: 'f-1',
+        kind: 'PHOTO',
+        label: null,
+        fileName: 'face.png',
+        mimeType: 'image/png',
+        sizeBytes: 1200,
+        uploadedAt: '2026-10-02T05:00:00.000Z',
+      },
+      documents: [
+        {
+          id: 'd-1',
+          kind: 'DOCUMENT',
+          label: 'Aadhaar card',
+          fileName: 'aadhaar.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 2048,
+          uploadedAt: '2026-10-03T05:00:00.000Z',
+        },
+      ],
+      ...over,
+    });
+
+  it('shows the address and the photo, and keeps the address when adding a broker', async () => {
+    open(
+      handlers(MANAGER, withPhoto(), {
+        [`GET /api/brokers/${BROKER_ID}/photo`]: picture,
+      }),
+    );
+    const dialog = await openBroker();
+    expect(await within(dialog).findByText('12 Station Road, Howrah')).toBeInTheDocument();
+    expect(
+      await within(dialog).findByRole('img', { name: 'Photo of Ravi Broker' }),
+    ).toHaveAttribute('src', 'blob:broker-file');
+  });
+
+  it('sends the address typed in the form', async () => {
+    const { calls } = open(
+      handlers(MANAGER, broker(), {
+        'POST /api/brokers': () => jsonResponse(broker({ name: 'Asha Verma' }), 201),
+      }),
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'New broker' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'Asha Verma');
+    await userEvent.type(within(dialog).getByLabelText('Address'), '5 Park Street');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add broker' }));
+    await screen.findByText('Broker Asha Verma added');
+    expect(sent(calls, 'POST /api/brokers').at(-1)?.body).toMatchObject({
+      address: '5 Park Street',
+    });
+  });
+
+  it('uploads a chosen photo and shows the one that comes back', async () => {
+    let stored = broker();
+    const { calls } = open(
+      handlers(MANAGER, broker(), {
+        [`GET /api/brokers/${BROKER_ID}`]: () => jsonResponse(stored),
+        [`POST /api/brokers/${BROKER_ID}/photo?*`]: () => {
+          stored = withPhoto();
+          return jsonResponse(stored, 201);
+        },
+        [`GET /api/brokers/${BROKER_ID}/photo`]: picture,
+      }),
+    );
+    const dialog = await openBroker();
+    const input = await within(dialog).findByLabelText('Add photo');
+    await userEvent.upload(input, new File(['x'], 'face.png', { type: 'image/png' }));
+    expect(
+      await within(dialog).findByRole('img', { name: 'Photo of Ravi Broker' }),
+    ).toBeInTheDocument();
+    expect(
+      calls.some((call) =>
+        call.key.startsWith(`POST /api/brokers/${BROKER_ID}/photo?fileName=face.png`),
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses a file over 5 MB without sending it', async () => {
+    const { calls } = open(handlers(MANAGER, broker()));
+    const dialog = await openBroker();
+    const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
+    await userEvent.upload(await within(dialog).findByLabelText('Add photo'), big);
+    expect(await within(dialog).findByText('The file is larger than 5 MB')).toBeInTheDocument();
+    expect(calls.some((call) => call.key.startsWith('POST /api/brokers/'))).toBe(false);
+  });
+
+  it('removes the photo', async () => {
+    const { calls } = open(
+      handlers(MANAGER, withPhoto(), {
+        [`GET /api/brokers/${BROKER_ID}/photo`]: picture,
+        [`DELETE /api/brokers/${BROKER_ID}/photo`]: () =>
+          jsonResponse(withPhoto({ photo: null, hasPhoto: false })),
+      }),
+    );
+    const dialog = await openBroker();
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Remove photo' }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.key === `DELETE /api/brokers/${BROKER_ID}/photo`)).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('lists the documents and shows one inside the dialog', async () => {
+    open(
+      handlers(MANAGER, withPhoto(), {
+        [`GET /api/brokers/${BROKER_ID}/photo`]: picture,
+        [`GET /api/brokers/${BROKER_ID}/documents/d-1/file`]: () =>
+          new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }),
+      }),
+    );
+    const dialog = await openBroker();
+    const table = await within(dialog).findByRole('table', { name: 'Broker documents' });
+    expect(table).toHaveTextContent('Aadhaar card');
+    expect(table).toHaveTextContent('aadhaar.pdf');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'View Aadhaar card' }));
+    const preview = await within(dialog).findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByTitle('Aadhaar card · aadhaar.pdf')).toHaveAttribute(
+      'src',
+      'blob:broker-file',
+    );
+    await userEvent.click(within(preview).getByRole('button', { name: 'Close preview' }));
+    expect(
+      within(dialog).queryByRole('region', { name: 'Document preview' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('adds a document with the name typed for it', async () => {
+    const { calls } = open(
+      handlers(MANAGER, broker(), {
+        [`POST /api/brokers/${BROKER_ID}/documents?*`]: () => jsonResponse(withPhoto(), 201),
+        [`GET /api/brokers/${BROKER_ID}/photo`]: picture,
+      }),
+    );
+    const dialog = await openBroker();
+    await userEvent.type(await within(dialog).findByLabelText('What the document is'), 'Agreement');
+    await userEvent.upload(
+      within(dialog).getByLabelText('Add a document'),
+      new File(['%PDF-1.4'], 'agreement.pdf', { type: 'application/pdf' }),
+    );
+    await waitFor(() =>
+      expect(
+        calls.some((call) =>
+          call.key.startsWith(
+            `POST /api/brokers/${BROKER_ID}/documents?fileName=agreement.pdf&label=Agreement`,
+          ),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('lets someone who may only view see the photo and documents, and change nothing', async () => {
+    open(
+      handlers(VIEWER, withPhoto(), {
+        [`GET /api/brokers/${BROKER_ID}/photo`]: picture,
+      }),
+    );
+    const dialog = await openBroker();
+    await within(dialog).findByRole('table', { name: 'Broker documents' });
+    expect(within(dialog).queryByLabelText('Add photo')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Replace photo')).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Add a document')).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('commission agreed on the invoice, in the list', () => {
+  const create = vi.fn(() => 'blob:gift');
+  beforeEach(() => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('says what a gift and a fixed amount are, and shows the gift photo', async () => {
+    open(
+      handlers(MANAGER, broker(), {
+        'GET /api/commissions?*': () =>
+          jsonResponse(
+            pageOf([
+              commission({
+                kind: 'GIFT',
+                ruleType: null,
+                ruleValue: null,
+                giftName: 'Mixer grinder',
+                hasGiftPhoto: true,
+                amount: '800.00',
+                effective: '800.00',
+                adjusted: '0.00',
+              }),
+              commission({
+                id: COMMISSION_2,
+                invoiceNo: 'HQ/NG/26-27/00002',
+                kind: 'FIXED',
+                ruleType: null,
+                ruleValue: null,
+                amount: '150.00',
+                effective: '150.00',
+                adjusted: '0.00',
+              }),
+            ]),
+          ),
+        [`GET /api/commissions/${COMMISSION_ID}/gift-photo`]: () =>
+          new Response('png-bytes', { status: 200, headers: { 'content-type': 'image/png' } }),
+      }),
+    );
+    await tab('Commissions');
+    const rows = within(await screen.findByRole('table', { name: 'Commissions' })).getAllByRole(
+      'row',
+    );
+    expect(rows[1]).toHaveTextContent('Gift: Mixer grinder');
+    expect(rows[2]).toHaveTextContent('Agreed with the broker');
+    await userEvent.click(
+      within(rows[1] as HTMLElement).getByRole('button', {
+        name: 'View gift photo for HQ/NG/26-27/00001',
+      }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: /Gift: Mixer grinder/ });
+    expect(await within(dialog).findByRole('img', { name: 'Gift: Mixer grinder' })).toHaveAttribute(
+      'src',
+      'blob:gift',
+    );
   });
 });

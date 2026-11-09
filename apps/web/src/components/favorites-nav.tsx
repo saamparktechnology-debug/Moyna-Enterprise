@@ -1,3 +1,4 @@
+//apps/web/src/components/favorites-nav.tsx
 import { ArrowDown, ArrowUp, Star } from 'lucide-react';
 import { NavLink } from 'react-router';
 import { Button } from '@/components/ui/button';

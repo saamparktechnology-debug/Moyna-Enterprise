@@ -96,6 +96,7 @@ export const KYC_DOCUMENT_TYPES: readonly (readonly [string, string])[] = [
   ['GST_CERTIFICATE', 'GST certificate'],
   ['ADDRESS_PROOF', 'Address proof'],
   ['PHOTO', 'Photograph'],
+  ['DECLARATION', 'Declaration form'],
 ];
 
 export const DEPARTMENTS: readonly (readonly [string, string])[] = [

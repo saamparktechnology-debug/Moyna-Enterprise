@@ -1,3 +1,4 @@
+//apps\web\src\features\billing\invoices-page.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { INVOICE_STATUSES, INVOICE_TYPES } from '@erp/contracts';
@@ -12,7 +13,10 @@ import { Select } from '@/components/select-field';
 import { StatusBadge } from '@/components/status-badge';
 import { toast } from '@/components/toast';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/features/auth/auth-provider';
 import { isFiltered, useListParams, useSearchBox } from '@/lib/use-list-params';
+import { useBrokers } from '../brokers/use-brokers';
+import { useCategories } from '../items/use-items';
 import { STATUS_TEXT, TYPE_TEXT } from './billing-shared';
 import { CreditNoteRequestDialog } from './credit-note-dialogs';
 import { CreditNotesTab } from './credit-notes-tab';
@@ -20,7 +24,10 @@ import { InvoiceDetailDialog } from './invoice-detail-dialog';
 import { InvoiceFormDialog } from './invoice-form-dialog';
 import { useInvoices } from './use-billing';
 
-const DEFAULTS = { pageSize: 10, filters: { status: '', type: '' } };
+const DEFAULTS = {
+  pageSize: 10,
+  filters: { status: '', type: '', groupId: '', categoryId: '', brokerId: '' },
+};
 
 type Dialogs =
   | { kind: 'form'; invoice: Invoice | null }
@@ -40,12 +47,30 @@ export function InvoicesPage() {
   const [dialog, setDialog] = useState<Dialogs>(null);
   const status = params.filters['status'] ?? '';
   const type = params.filters['type'] ?? '';
+  const groupId = params.filters['groupId'] ?? '';
+  const categoryId = params.filters['categoryId'] ?? '';
+  const brokerId = params.filters['brokerId'] ?? '';
+  const { can } = useAuth();
+  const categories = useCategories(can('items.view'));
+  const brokers = useBrokers(
+    { page: 1, pageSize: 100, search: '', status: 'all' },
+    can('brokers.view'),
+  );
+  const allCategories = categories.data ?? [];
+  const groups = allCategories.filter((category) => category.parentId === null);
+  const leaves = allCategories.filter(
+    (category) => category.parentId !== null && (groupId === '' || category.parentId === groupId),
+  );
+  const brokerChoices = brokers.data?.items ?? [];
   const query = useInvoices({
     page: params.page,
     pageSize: params.pageSize,
     search: params.search,
     status,
     type,
+    groupId,
+    categoryId,
+    brokerId,
     sortBy: params.sortBy,
     sortOrder: params.sortOrder,
   });
@@ -83,6 +108,12 @@ export function InvoicesPage() {
       meta: { sortKey: 'total', align: 'right', className: 'tabular' },
     },
     {
+      id: 'profit',
+      header: 'Profit',
+      meta: { align: 'right', className: 'tabular' },
+      cell: ({ row }) => row.original.profit ?? '—',
+    },
+    {
       id: 'actions',
       header: actionsHeader,
       enableHiding: false,
@@ -115,6 +146,30 @@ export function InvoicesPage() {
           {
             label: `Kind: ${TYPE_TEXT[type as keyof typeof TYPE_TEXT] ?? type}`,
             onRemove: () => set.setFilter('type', ''),
+          },
+        ]
+      : []),
+    ...(groupId !== ''
+      ? [
+          {
+            label: `Group: ${allCategories.find((category) => category.id === groupId)?.name ?? 'Chosen group'}`,
+            onRemove: () => set.setFilter('groupId', ''),
+          },
+        ]
+      : []),
+    ...(categoryId !== ''
+      ? [
+          {
+            label: `Category: ${allCategories.find((category) => category.id === categoryId)?.name ?? 'Chosen category'}`,
+            onRemove: () => set.setFilter('categoryId', ''),
+          },
+        ]
+      : []),
+    ...(brokerId !== ''
+      ? [
+          {
+            label: `Broker: ${brokerChoices.find((broker) => broker.id === brokerId)?.name ?? 'Chosen broker'}`,
+            onRemove: () => set.setFilter('brokerId', ''),
           },
         ]
       : []),
@@ -185,6 +240,66 @@ export function InvoicesPage() {
                 ))}
               </Select>
             </label>
+            {groups.length > 0 ? (
+              <label className="space-y-1 text-sm font-medium">
+                <span>Group</span>
+                <Select
+                  className="w-full sm:w-48"
+                  value={groupId}
+                  onChange={(event) => {
+                    set.setFilter('groupId', event.target.value);
+                    const chosen = allCategories.find((category) => category.id === categoryId);
+                    if (
+                      chosen &&
+                      event.target.value !== '' &&
+                      chosen.parentId !== event.target.value
+                    )
+                      set.setFilter('categoryId', '');
+                  }}
+                >
+                  <option value="">All</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : null}
+            {leaves.length > 0 ? (
+              <label className="space-y-1 text-sm font-medium">
+                <span>Product category</span>
+                <Select
+                  className="w-full sm:w-52"
+                  value={categoryId}
+                  onChange={(event) => set.setFilter('categoryId', event.target.value)}
+                >
+                  <option value="">All</option>
+                  {leaves.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : null}
+            {brokerChoices.length > 0 ? (
+              <label className="space-y-1 text-sm font-medium">
+                <span>Broker</span>
+                <Select
+                  className="w-full sm:w-48"
+                  value={brokerId}
+                  onChange={(event) => set.setFilter('brokerId', event.target.value)}
+                >
+                  <option value="">All</option>
+                  {brokerChoices.map((broker) => (
+                    <option key={broker.id} value={broker.id}>
+                      {broker.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ) : null}
           </DataTableToolbar>
 
           <DataTable

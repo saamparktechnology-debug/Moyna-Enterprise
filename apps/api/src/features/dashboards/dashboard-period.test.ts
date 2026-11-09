@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { conversionRate, resolvePeriod, tomorrowStartInIndia } from './dashboard-period.js';
+import {
+  conversionRate,
+  resolvePeriod,
+  todayStartInIndia,
+  tomorrowStartInIndia,
+} from './dashboard-period.js';
 
 describe('resolvePeriod', () => {
   it('uses the dates given', () => {
@@ -19,6 +24,17 @@ describe('resolvePeriod', () => {
       from: '2026-11-01',
       to: '2026-11-01',
     });
+  });
+});
+
+describe('todayStartInIndia', () => {
+  it('is midnight at the start of the same day in India', () => {
+    expect(todayStartInIndia(new Date('2026-10-10T08:00:00Z')).toISOString()).toBe(
+      '2026-10-09T18:30:00.000Z',
+    );
+    expect(todayStartInIndia(new Date('2026-10-10T19:00:00Z')).toISOString()).toBe(
+      '2026-10-10T18:30:00.000Z',
+    );
   });
 });
 

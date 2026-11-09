@@ -1,3 +1,4 @@
+//apps/web/src/features/branches/active-branch.ts
 import { useSyncExternalStore } from 'react';
 import type { SessionUser } from '@erp/contracts';
 import { api } from '@/lib/api';

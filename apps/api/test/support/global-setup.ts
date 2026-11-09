@@ -1,3 +1,4 @@
+//apps/api/test/support/global-setup.ts
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { assertDatabaseReachable } from './database-preflight.js';

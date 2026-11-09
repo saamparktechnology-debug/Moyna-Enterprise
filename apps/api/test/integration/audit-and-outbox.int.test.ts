@@ -1,3 +1,4 @@
+//apps\api\test\integration\audit-and-outbox.int.test.ts
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AuditService } from '../../src/common/audit/audit.service.js';

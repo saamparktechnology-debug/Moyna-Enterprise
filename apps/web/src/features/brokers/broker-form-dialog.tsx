@@ -1,3 +1,4 @@
+//apps/web/src/features/brokers/broker-form-dialog.tsx
 import { useState } from 'react';
 import { CreateBrokerRequestSchema } from '@erp/contracts';
 import type { Broker } from '@erp/contracts';
@@ -20,13 +21,18 @@ export function BrokerFormDialog({ broker, onClose, onSaved }: Props) {
   const { create, update } = useBrokerMutations();
   const [name, setName] = useState(broker?.name ?? '');
   const [phone, setPhone] = useState(broker?.phone ?? '');
+  const [address, setAddress] = useState(broker?.address ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<Problem | null>(null);
   const busy = create.isPending || update.isPending;
 
   const submit = async () => {
     setProblem(null);
-    const request = { name: name.trim(), phone: phone.trim() === '' ? null : phone.trim() };
+    const request = {
+      name: name.trim(),
+      phone: phone.trim() === '' ? null : phone.trim(),
+      address: address.trim() === '' ? null : address.trim(),
+    };
     const parsed = CreateBrokerRequestSchema.safeParse(request);
     if (!parsed.success) {
       const found: Record<string, string> = {};
@@ -59,7 +65,7 @@ export function BrokerFormDialog({ broker, onClose, onSaved }: Props) {
         <DialogTitle>{broker ? 'Edit broker' : 'New broker'}</DialogTitle>
         <DialogDescription>
           {broker
-            ? 'Change who the broker is.'
+            ? 'Change who the broker is. The photo and documents are added from the broker’s page.'
             : 'Someone who brings sales and is paid a commission.'}
         </DialogDescription>
         {problem ? (
@@ -80,6 +86,16 @@ export function BrokerFormDialog({ broker, onClose, onSaved }: Props) {
                 inputMode="numeric"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
+              />
+            )}
+          </FormField>
+          <FormField label="Address" error={errors['address']} hint="Optional">
+            {(props) => (
+              <Input
+                {...props}
+                autoComplete="street-address"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
               />
             )}
           </FormField>

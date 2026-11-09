@@ -1,3 +1,4 @@
+//apps/web/src/features/inventory/list-state.tsx
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 

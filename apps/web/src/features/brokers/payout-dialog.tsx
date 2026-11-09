@@ -1,3 +1,4 @@
+//apps/web/src/features/brokers/payout-dialog.tsx
 import { useState } from 'react';
 import type { Commission } from '@erp/contracts';
 import { FormField, Input } from '@/components/form-field';

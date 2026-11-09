@@ -1,3 +1,4 @@
+//apps/web/src/features/purchasing/receive-dialog.test.tsx
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';

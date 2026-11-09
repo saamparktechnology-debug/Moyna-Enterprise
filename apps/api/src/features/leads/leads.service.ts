@@ -1,3 +1,4 @@
+//apps/api/src/features/leads/leads.service.ts
 import { Inject, Injectable } from '@nestjs/common';
 import {
   AddLeadNoteRequestSchema,
@@ -149,6 +150,7 @@ export class LeadsService {
           phone: input.phone,
           source: input.source,
           interest: input.interest,
+          age: input.age,
           assignedTo: input.assignedTo,
           createdBy: auth.userId,
           updatedBy: auth.userId,
@@ -201,6 +203,7 @@ export class LeadsService {
           ...(input.phone !== undefined ? { phone: input.phone } : {}),
           ...(input.source !== undefined ? { source: input.source } : {}),
           ...(input.interest !== undefined ? { interest: input.interest } : {}),
+          ...(input.age !== undefined ? { age: input.age } : {}),
           updatedBy: auth.userId,
         },
       });

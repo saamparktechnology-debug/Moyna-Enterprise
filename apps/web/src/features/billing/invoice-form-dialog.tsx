@@ -1,10 +1,18 @@
+//apps\web\src\features\billing\invoice-form-dialog.tsx
 import { useState } from 'react';
 import {
   CreateInvoiceRequestSchema,
   DISCOUNT_STAFF_LIMIT_PERCENT,
   INVOICE_TYPES,
 } from '@erp/contracts';
-import type { CreateInvoiceRequest, Invoice, InvoiceTypeName, Item } from '@erp/contracts';
+import type {
+  CreateInvoiceRequest,
+  Invoice,
+  InvoiceCommissionInput,
+  InvoiceCommissionTypeName,
+  InvoiceTypeName,
+  Item,
+} from '@erp/contracts';
 import { FormDialog } from '@/components/form-dialog';
 import { FormField, Input } from '@/components/form-field';
 import { FormSection } from '@/components/form-section';
@@ -70,6 +78,7 @@ function toRequest(
   brokerId: string,
   branchId: string,
   lines: LineState[],
+  commission: InvoiceCommissionInput | null,
 ): CreateInvoiceRequest {
   return {
     ...(branchId ? { branchId } : {}),
@@ -77,6 +86,7 @@ function toRequest(
     type,
     dueDate: dueDate === '' ? null : dueDate,
     brokerId: brokerId === '' ? null : brokerId,
+    ...(commission ? { commission } : {}),
     lines: lines.map((line) => ({
       itemId: line.item?.id ?? '',
       qty: Number(line.qty),
@@ -159,6 +169,13 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
   const [type, setType] = useState<InvoiceTypeName>(invoice?.type ?? 'GST');
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? '');
   const [brokerId, setBrokerId] = useState(invoice?.brokerId ?? '');
+  // A new invoice starts with no commission, so an amount or a gift is always a choice. An older draft with nothing
+  // agreed (`''`) keeps using the broker's standing rule until one is chosen.
+  const [commissionType, setCommissionType] = useState<'' | InvoiceCommissionTypeName>(
+    invoice ? (invoice.commission?.type ?? '') : 'NONE',
+  );
+  const [commissionAmount, setCommissionAmount] = useState(invoice?.commission?.amount ?? '');
+  const [giftName, setGiftName] = useState(invoice?.commission?.giftName ?? '');
   const [lines, setLines] = useState<LineState[]>(() => linesOf(invoice));
   const [submitted, setSubmitted] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -166,6 +183,18 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
   const typedCustomer = useDebouncedValue(customerText.trim(), SEARCH_DELAY_MS);
   const customers = useCustomers({ page: 1, pageSize: 10, search: typedCustomer, kycStatus: '' });
   const branchId = invoice?.branchId ?? choice.branchId;
+  const agreed: InvoiceCommissionInput | null =
+    brokerId === '' || commissionType === ''
+      ? null
+      : commissionType === 'NONE'
+        ? { type: 'NONE' }
+        : {
+            type: commissionType,
+            ...(commissionAmount.trim() === '' ? {} : { amount: commissionAmount.trim() }),
+            ...(commissionType === 'GIFT' && giftName.trim() !== ''
+              ? { giftName: giftName.trim() }
+              : {}),
+          };
   const request = toRequest(
     customer?.id ?? '',
     type,
@@ -173,6 +202,7 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
     brokerId,
     invoice ? '' : branchId,
     lines,
+    agreed,
   );
   const checks = fieldErrors(request);
   const problems = { ...checks, ...problem?.fields };
@@ -183,7 +213,7 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
     { page: 1, pageSize: 100, search: '', status: 'active' },
     can('brokers.view'),
   );
-  const usableBrokers = (brokers.data?.items ?? []).filter((item) => item.activeRule !== null);
+  const usableBrokers = brokers.data?.items ?? [];
 
   const change = (key: number, patch: Partial<LineState>) =>
     setLines((previous) =>
@@ -218,6 +248,9 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
       type,
       dueDate,
       brokerId,
+      commissionType,
+      commissionAmount,
+      giftName,
       lines.map((line) => [
         line.item?.id ?? '',
         line.serialUnitId,
@@ -233,6 +266,9 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
       type,
       dueDate,
       brokerId,
+      commissionType,
+      commissionAmount,
+      giftName,
       lines.map((line) => [
         line.item?.id ?? '',
         line.serialUnitId,
@@ -332,7 +368,7 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
           <FormField
             label="Broker"
             error={shown('brokerId')}
-            hint="Optional. Commission is worked out when the invoice is issued"
+            hint="Optional. Agree the commission for this sale below"
           >
             {(props) => (
               <Select
@@ -346,12 +382,71 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
                 ) : null}
                 {usableBrokers.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name} · {ruleText(item.activeRule)}
+                    {item.name}
+                    {item.activeRule ? ` · ${ruleText(item.activeRule)}` : ''}
                   </option>
                 ))}
               </Select>
             )}
           </FormField>
+        ) : null}
+        {brokerId !== '' ? (
+          <fieldset className="grid gap-4 rounded-md border p-3 sm:grid-cols-3">
+            <legend className="px-1 text-sm font-medium">Commission agreed for this sale</legend>
+            <FormField
+              label="Commission"
+              error={shown('commission.type')}
+              hint="Optional. Decided with the broker now"
+            >
+              {(props) => (
+                <Select
+                  {...props}
+                  value={commissionType}
+                  onChange={(event) =>
+                    setCommissionType(event.target.value as '' | InvoiceCommissionTypeName)
+                  }
+                >
+                  {commissionType === '' ? (
+                    <option value="">The broker’s standing rule</option>
+                  ) : null}
+                  <option value="NONE">No commission</option>
+                  <option value="FIXED">Fixed amount</option>
+                  <option value="GIFT">Gift</option>
+                </Select>
+              )}
+            </FormField>
+            {commissionType === 'FIXED' || commissionType === 'GIFT' ? (
+              <FormField
+                label={commissionType === 'GIFT' ? 'Value of the gift' : 'Amount'}
+                error={shown('commission.amount')}
+                hint="In rupees"
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    inputMode="decimal"
+                    value={commissionAmount}
+                    onChange={(event) => setCommissionAmount(event.target.value)}
+                  />
+                )}
+              </FormField>
+            ) : null}
+            {commissionType === 'GIFT' ? (
+              <FormField
+                label="Gift"
+                error={shown('commission.giftName')}
+                hint="Save the draft, then add the gift photo from the invoice"
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    value={giftName}
+                    onChange={(event) => setGiftName(event.target.value)}
+                  />
+                )}
+              </FormField>
+            ) : null}
+          </fieldset>
         ) : null}
         <FormField label="Due date" error={shown('dueDate')} hint="Optional">
           {(props) => (

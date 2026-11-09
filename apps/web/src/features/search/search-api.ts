@@ -1,3 +1,4 @@
+//apps/web/src/features/search/search-api.ts
 import { SearchResponseSchema } from '@erp/contracts';
 import type { SearchResponse } from '@erp/contracts';
 import { api } from '@/lib/api';

@@ -48,6 +48,11 @@ const LeadNameSchema = z
   .min(2, 'Enter at least 2 characters')
   .max(120, 'Use at most 120 characters');
 const InterestSchema = z.string().trim().min(1).max(300, 'Use at most 300 characters');
+export const LeadAgeSchema = z
+  .number('Enter the age in years')
+  .int('Enter the age as a whole number')
+  .min(1, 'Enter an age from 1 to 120')
+  .max(120, 'Enter an age from 1 to 120');
 
 export const CreateLeadRequestSchema = z.object({
   name: LeadNameSchema,
@@ -58,6 +63,7 @@ export const CreateLeadRequestSchema = z.object({
     .min(1, 'Choose where the lead came from')
     .max(30),
   interest: InterestSchema.nullable().default(null),
+  age: LeadAgeSchema.nullable().default(null),
   assignedTo: z.uuid().nullable().default(null),
   note: NoteSchema.optional(),
   branchId: z.uuid().optional(),
@@ -70,6 +76,7 @@ export const UpdateLeadRequestSchema = z
     phone: PhoneSchema.optional(),
     source: z.string().trim().min(1).max(30).optional(),
     interest: InterestSchema.nullable().optional(),
+    age: LeadAgeSchema.nullable().optional(),
     rowVersion: z.number().int().min(1),
   })
   .refine((value) => Object.keys(value).some((key) => key !== 'rowVersion'), {
@@ -165,6 +172,8 @@ export const LeadSummarySchema = z.object({
   sourceName: z.string(),
   stage: LeadStageSchema,
   interest: z.string().nullable(),
+  /** In whole years, when it is known. */
+  age: z.number().int().nullable().optional(),
   assignedTo: z.string().nullable(),
   assignedToName: z.string().nullable(),
   customerId: z.string().nullable(),

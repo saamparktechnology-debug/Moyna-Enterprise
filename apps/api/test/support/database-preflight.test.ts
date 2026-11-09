@@ -1,3 +1,4 @@
+//apps/api/test/support/database-preflight.test.ts
 import { describe, expect, it } from 'vitest';
 import { assertDatabaseReachable, explainConnectionFailure } from './database-preflight.js';
 

@@ -1,3 +1,4 @@
+//apps/web/src/features/payments/payments-shared.tsx
 import type { DueStatusName } from '@erp/contracts';
 import { Alert } from '@/components/alert';
 import type { Problem } from '../purchasing/purchasing-shared';

@@ -1,3 +1,4 @@
+//apps/web/src/features/dashboard/dashboard-parts.tsx
 import type { BranchPerformance } from '@erp/contracts';
 import { AlertTriangle } from 'lucide-react';
 import { SimpleTable } from '@/components/data-table/simple-table';

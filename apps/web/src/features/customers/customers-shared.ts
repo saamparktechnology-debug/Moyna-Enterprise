@@ -1,3 +1,4 @@
+//apps/web/src/features/customers/customers-shared.ts
 import type { KycStatusName } from '@erp/contracts';
 
 export const KYC_LABELS: Record<KycStatusName, string> = {

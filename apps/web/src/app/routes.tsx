@@ -1,3 +1,4 @@
+//apps/web/src/app/routes.tsx
 import type { RouteObject } from 'react-router';
 import { ChangePasswordPage } from '@/features/auth/change-password-page';
 import { LoginPage } from '@/features/auth/login-page';

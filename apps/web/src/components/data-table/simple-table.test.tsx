@@ -1,3 +1,4 @@
+//apps/web/src/components/data-table/simple-table.test.tsx
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { SimpleTable } from './simple-table';

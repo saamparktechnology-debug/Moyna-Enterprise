@@ -1,3 +1,4 @@
+//apps/api/src/features/leads/leads.mapper.ts
 import { Prisma } from '@prisma/client';
 import type { Followup, FollowupStatusName, Lead, LeadNote, LeadSummary } from '@erp/contracts';
 
@@ -58,6 +59,7 @@ export function toSummaryDto(row: LeadSummaryRow, now: Date): LeadSummary {
     sourceName: row.leadSource.name,
     stage: row.stage,
     interest: row.interest,
+    age: row.age,
     assignedTo: row.assignedTo,
     assignedToName: row.assignedToUser?.fullName ?? null,
     customerId: row.customerId,
@@ -125,6 +127,7 @@ export function toLeadDto(row: LeadDetailRow, names: ReadonlyMap<string, string>
     sourceName: row.leadSource.name,
     stage: row.stage,
     interest: row.interest,
+    age: row.age,
     assignedTo: row.assignedTo,
     assignedToName: row.assignedToUser?.fullName ?? null,
     customerId: row.customerId,
@@ -156,6 +159,7 @@ export function leadSnapshot(row: {
   source: string;
   stage: string;
   interest: string | null;
+  age: number | null;
   assignedTo: string | null;
   customerId: string | null;
 }): Record<string, unknown> {
@@ -165,6 +169,7 @@ export function leadSnapshot(row: {
     source: row.source,
     stage: row.stage,
     interest: row.interest,
+    age: row.age,
     assignedTo: row.assignedTo,
     customerId: row.customerId,
   };

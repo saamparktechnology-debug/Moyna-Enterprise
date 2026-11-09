@@ -1,3 +1,4 @@
+//apps/web/src/features/brokers/broker-ledger-dialog.tsx
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { BrokerLedgerEntry } from '@erp/contracts';

@@ -19,7 +19,12 @@ import {
 } from '../../common/errors/domain-errors.js';
 import { formatMoney, sumMoney } from '../../common/money/money.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
-import { conversionRate, resolvePeriod, tomorrowStartInIndia } from './dashboard-period.js';
+import {
+  conversionRate,
+  resolvePeriod,
+  todayStartInIndia,
+  tomorrowStartInIndia,
+} from './dashboard-period.js';
 import { between, trendSql } from './dashboards.sql.js';
 import type { PeriodParams, TrendRow } from './dashboards.sql.js';
 
@@ -50,6 +55,7 @@ interface PerformanceRow {
   low_stock: number;
   batteries_expired: number;
   batteries_expiring: number;
+  followups_due_today: number;
 }
 
 interface BranchRow {
@@ -73,6 +79,7 @@ interface BranchRow {
   followups_overdue: number;
   followups_today: number;
   followups_upcoming: number;
+  followups_due_today: number;
   leads_created: number;
   leads_won: number;
   batteries_expired: number;
@@ -104,10 +111,15 @@ export class DashboardsService {
     const query = CompanyDashboardQuerySchema.parse(rawQuery);
     const period = resolvePeriod(query);
     const today = todayInIndia();
+    const now = new Date();
+    const todayStart = todayStartInIndia(now);
+    const tomorrow = tomorrowStartInIndia(now);
 
     return this.transactions.run(async (tx) => {
       const [rows, trend, missing] = await Promise.all([
-        tx.$queryRaw<PerformanceRow[]>(performanceSql(period, today, query.withinDays)),
+        tx.$queryRaw<PerformanceRow[]>(
+          performanceSql(period, today, query.withinDays, todayStart, tomorrow),
+        ),
         tx.$queryRaw<TrendRow[]>(trendSql(period, null)),
         tx.$queryRaw<{ n: number }[]>`
           SELECT count(DISTINCT item_id)::int AS n FROM v_stock_value_by_branch WHERE cost_missing`,
@@ -149,6 +161,7 @@ export class DashboardsService {
           lowStockItems: row.low_stock,
           batteriesExpired: row.batteries_expired,
           batteriesExpiring: row.batteries_expiring,
+          followupsDueToday: row.followups_due_today,
         }));
 
       const sum = (pick: (row: BranchPerformance) => string): string =>
@@ -185,6 +198,7 @@ export class DashboardsService {
           overdueInvoices: count((row) => row.dues.overdueInvoices),
         },
         leads: { created, won, conversionRate: conversionRate(created, won) },
+        followups: { dueToday: count((row) => row.followupsDueToday) },
         commissions: {
           payable: sum((row) => row.commissionPayable),
           paid: sum((row) => row.commissionPaid),
@@ -206,6 +220,7 @@ export class DashboardsService {
     const period = resolvePeriod(query);
     const today = todayInIndia();
     const now = new Date();
+    const todayStart = todayStartInIndia(now);
     const tomorrow = tomorrowStartInIndia(now);
     const branchId = this.chooseBranch(query.branchId);
 
@@ -218,7 +233,7 @@ export class DashboardsService {
 
       const [rows, trend] = await Promise.all([
         tx.$queryRaw<BranchRow[]>(
-          branchSql(branchId, period, today, query.withinDays, now, tomorrow),
+          branchSql(branchId, period, today, query.withinDays, now, tomorrow, todayStart),
         ),
         tx.$queryRaw<TrendRow[]>(trendSql(period, branchId)),
       ]);
@@ -254,6 +269,7 @@ export class DashboardsService {
           overdue: row.followups_overdue,
           today: row.followups_today,
           upcoming: row.followups_upcoming,
+          dueToday: row.followups_due_today,
         },
         leads: {
           created: row.leads_created,
@@ -307,7 +323,13 @@ function hasActivity(row: PerformanceRow): boolean {
   return figures.some((value) => value !== null && !value.isZero()) || counts.some((n) => n > 0);
 }
 
-function performanceSql(period: PeriodParams, today: string, withinDays: number): Prisma.Sql {
+function performanceSql(
+  period: PeriodParams,
+  today: string,
+  withinDays: number,
+  todayStart: Date,
+  tomorrow: Date,
+): Prisma.Sql {
   return Prisma.sql`
     WITH s AS (
       SELECT branch_id, sum(invoices)::int AS invoices, sum(total) AS sales, sum(taxable_value) AS taxable
@@ -338,6 +360,9 @@ function performanceSql(period: PeriodParams, today: string, withinDays: number)
       SELECT branch_id, sum(payable_amount) AS payable,
              sum(paid_amount) FILTER (WHERE ${between(Prisma.sql`paid_day`, period)}) AS paid
       FROM v_commission_worth GROUP BY branch_id),
+    fu AS (
+      SELECT branch_id, count(*)::int AS due_today FROM v_open_followups
+      WHERE due_at >= ${todayStart} AND due_at < ${tomorrow} GROUP BY branch_id),
     ls AS (SELECT branch_id, count(*)::int AS n FROM v_low_stock GROUP BY branch_id),
     bx AS (
       SELECT branch_id,
@@ -356,13 +381,15 @@ function performanceSql(period: PeriodParams, today: string, withinDays: number)
            coalesce(l.created, 0) AS leads_created, coalesce(l.won, 0) AS leads_won,
            coalesce(cm.payable, 0) AS commission_payable, coalesce(cm.paid, 0) AS commission_paid,
            coalesce(ls.n, 0) AS low_stock,
-           coalesce(bx.expired, 0) AS batteries_expired, coalesce(bx.expiring, 0) AS batteries_expiring
+           coalesce(bx.expired, 0) AS batteries_expired, coalesce(bx.expiring, 0) AS batteries_expiring,
+           coalesce(fu.due_today, 0) AS followups_due_today
     FROM branches b
     LEFT JOIN s ON s.branch_id = b.id LEFT JOIN n ON n.branch_id = b.id
     LEFT JOIN p ON p.branch_id = b.id LEFT JOIN c ON c.branch_id = b.id
     LEFT JOIN st ON st.branch_id = b.id LEFT JOIN d ON d.branch_id = b.id
     LEFT JOIN l ON l.branch_id = b.id LEFT JOIN cm ON cm.branch_id = b.id
     LEFT JOIN ls ON ls.branch_id = b.id LEFT JOIN bx ON bx.branch_id = b.id
+    LEFT JOIN fu ON fu.branch_id = b.id
     WHERE app_branch_allowed(b.id)
     ORDER BY b.code`;
 }
@@ -374,6 +401,7 @@ function branchSql(
   withinDays: number,
   now: Date,
   tomorrow: Date,
+  todayStart: Date,
 ): Prisma.Sql {
   const id = Prisma.sql`${branchId}::uuid`;
   return Prisma.sql`
@@ -410,6 +438,8 @@ function branchSql(
       (SELECT count(*)::int FROM v_open_followups
         WHERE branch_id = ${id} AND due_at >= ${now} AND due_at < ${tomorrow}) AS followups_today,
       (SELECT count(*)::int FROM v_open_followups WHERE branch_id = ${id} AND due_at >= ${tomorrow}) AS followups_upcoming,
+      (SELECT count(*)::int FROM v_open_followups
+        WHERE branch_id = ${id} AND due_at >= ${todayStart} AND due_at < ${tomorrow}) AS followups_due_today,
       (SELECT coalesce(sum(created), 0)::int FROM v_daily_leads
         WHERE branch_id = ${id} AND ${between(Prisma.sql`day`, period)}) AS leads_created,
       (SELECT coalesce(sum(won), 0)::int FROM v_daily_leads

@@ -1,3 +1,4 @@
+//apps/web/src/features/leads/lead-form-dialog.tsx
 import { useState } from 'react';
 import { CreateLeadRequestSchema } from '@erp/contracts';
 import type { CreateLeadRequest, Lead } from '@erp/contracts';
@@ -28,6 +29,7 @@ export function LeadFormDialog({ lead, onClose, onSaved }: Props) {
   const [phone, setPhone] = useState(lead?.phone ?? '');
   const [source, setSource] = useState(lead?.source ?? '');
   const [interest, setInterest] = useState(lead?.interest ?? '');
+  const [age, setAge] = useState(lead?.age == null ? '' : String(lead.age));
   const [assignedTo, setAssignedTo] = useState(lead ? '' : (user?.id ?? ''));
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -51,6 +53,7 @@ export function LeadFormDialog({ lead, onClose, onSaved }: Props) {
             phone: phone.trim(),
             source,
             interest: interest.trim() === '' ? null : interest.trim(),
+            age: age.trim() === '' ? null : Number(age.trim()),
             rowVersion: lead.rowVersion,
           },
         });
@@ -65,6 +68,7 @@ export function LeadFormDialog({ lead, onClose, onSaved }: Props) {
       phone: phone.trim(),
       source,
       interest: interest.trim() === '' ? null : interest.trim(),
+      age: age.trim() === '' ? null : Number(age.trim()),
       assignedTo: assignedTo === '' ? null : assignedTo,
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(choice.mustChoose ? { branchId: choice.branchId } : {}),
@@ -150,6 +154,17 @@ export function LeadFormDialog({ lead, onClose, onSaved }: Props) {
             choice={lead ? { ...choice, mustChoose: false } : choice}
             error={errors['branchId']}
           />
+          <FormField label="Age" error={errors['age']} hint="Optional. In years">
+            {(props) => (
+              <Input
+                {...props}
+                inputMode="numeric"
+                autoComplete="off"
+                value={age}
+                onChange={(event) => setAge(event.target.value)}
+              />
+            )}
+          </FormField>
           <div className="sm:col-span-2">
             <FormField label="What they want" error={errors['interest']}>
               {(props) => (

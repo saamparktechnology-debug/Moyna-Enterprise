@@ -1,3 +1,4 @@
+//apps/web/src/features/hr/hr-shared.ts
 import type {
   LeaveKindName,
   LeaveStatusName,

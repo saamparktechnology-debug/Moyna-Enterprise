@@ -1,3 +1,4 @@
+//apps/web/src/components/toast.tsx
 import { X } from 'lucide-react';
 import { useEffect, useSyncExternalStore } from 'react';
 import { Alert } from '@/components/alert';

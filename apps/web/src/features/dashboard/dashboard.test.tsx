@@ -1,3 +1,4 @@
+//apps/web/src/features/dashboard/dashboard.test.tsx
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { cloneElement } from 'react';
@@ -50,6 +51,7 @@ const performance = (id: string, code: string, name: string, total: string) => (
   lowStockItems: 1,
   batteriesExpired: 0,
   batteriesExpiring: 1,
+  followupsDueToday: 2,
 });
 
 const trend = [
@@ -66,6 +68,7 @@ const company: CompanyDashboard = {
   stock,
   dues,
   leads,
+  followups: { dueToday: 5 },
   commissions: { payable: '10.00', paid: '4.00' },
   alerts: { lowStockItems: 2, batteriesExpired: 3, batteriesExpiring: 4 },
   branches: [performance(A, 'AA', 'Alpha', '630.00'), performance(B, 'BB', 'Beta', '420.00')],
@@ -81,7 +84,7 @@ const branchOf = (id: string, code: string, name: string): BranchDashboard => ({
   stock: { ...stock, lowStockItems: 1 },
   transfers: { incoming: 2, outgoing: 1 },
   dues,
-  followups: { overdue: 1, today: 2, upcoming: 3 },
+  followups: { overdue: 1, today: 2, upcoming: 3, dueToday: 4 },
   leads,
   alerts: { batteriesExpired: 1, batteriesExpiring: 2 },
   trend,
@@ -154,6 +157,24 @@ describe('dashboard', () => {
 
     await user.selectOptions(screen.getByLabelText('Show'), '');
     expect(await screen.findByText('Branch performance')).toBeInTheDocument();
+  });
+
+  it('shows how many follow-ups are due today, in the company and in a branch', async () => {
+    const user = userEvent.setup();
+    setup(
+      {
+        'GET /api/dashboards/company*': () => jsonResponse(company),
+        'GET /api/dashboards/branch*': () => jsonResponse(branchOf(B, 'BB', 'Beta')),
+      },
+      SUPER,
+    );
+    renderApp('/');
+    expect((await screen.findByText('Follow-ups due today')).nextSibling).toHaveTextContent('5');
+
+    await user.click(await screen.findByRole('button', { name: 'BB · Beta' }));
+    await screen.findByRole('heading', { name: 'BB · Beta' });
+    expect(screen.getByText('Follow-ups due today').nextSibling).toHaveTextContent('4');
+    expect(screen.getByText('2 still to come · 3 later')).toBeInTheDocument();
   });
 
   it('shows a branch user their own branch without asking for the company', async () => {

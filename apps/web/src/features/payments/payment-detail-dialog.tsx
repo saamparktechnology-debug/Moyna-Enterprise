@@ -1,11 +1,14 @@
+//apps/web/src/features/payments/payment-detail-dialog.tsx
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { useState } from 'react';
+import { FilePreview, useFilePreview } from '@/components/file-preview';
 import { FormField, Input } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/features/auth/auth-provider';
 import { describeError } from '../purchasing/purchasing-shared';
 import type { Problem } from '../purchasing/purchasing-shared';
+import { downloadReceipt } from './payments-api';
 import { ProblemAlert } from './payments-shared';
 import { usePayment, usePaymentMutations } from './use-payments';
 
@@ -20,6 +23,7 @@ export function PaymentDetailDialog({ paymentId, onClose, onDone }: Props) {
   const { can } = useAuth();
   const query = usePayment(paymentId);
   const { apply, reverse } = usePaymentMutations();
+  const receiptView = useFilePreview();
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -98,6 +102,32 @@ export function PaymentDetailDialog({ paymentId, onClose, onDone }: Props) {
                 </>
               ) : null}
             </dl>
+            {can('payments.view') ? (
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const blob = await downloadReceipt(payment.id);
+                      receiptView.show(blob, 'application/pdf', `Receipt ${payment.receiptNo}`);
+                    })
+                  }
+                >
+                  View receipt
+                </Button>
+              </div>
+            ) : null}
+            {receiptView.preview ? (
+              <FilePreview
+                url={receiptView.preview.url}
+                mimeType={receiptView.preview.mimeType}
+                title={receiptView.preview.title}
+                onClose={receiptView.close}
+              />
+            ) : null}
 
             {payment.allocations.length > 0 ? (
               <SimpleTable

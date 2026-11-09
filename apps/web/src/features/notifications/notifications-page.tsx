@@ -1,3 +1,4 @@
+//apps/web/src/features/notifications/notifications-page.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { NOTIFICATION_KINDS, NOTIFICATION_KIND_LABELS } from '@erp/contracts';

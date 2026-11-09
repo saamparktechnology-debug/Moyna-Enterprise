@@ -1,3 +1,4 @@
+//apps/web/src/lib/api-client.ts
 import { ErrorResponseSchema } from '@erp/contracts';
 import type { ErrorCode, ErrorDetail } from '@erp/contracts';
 import type { z } from 'zod';

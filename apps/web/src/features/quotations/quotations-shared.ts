@@ -1,3 +1,4 @@
+//apps/web/src/features/quotations/quotations-shared.ts
 import type { BuildStageName, QuotationStatusName } from '@erp/contracts';
 
 export const QUOTATION_STATUS_TEXT: Record<QuotationStatusName, string> = {

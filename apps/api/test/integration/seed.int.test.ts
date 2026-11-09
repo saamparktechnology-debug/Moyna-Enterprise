@@ -1,3 +1,4 @@
+//apps/api/test/integration/seed.int.test.ts
 import argon2 from 'argon2';
 import { PERMISSION_CODES, ROLE_PRESETS } from '@erp/permissions';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -55,7 +56,7 @@ describe('seed', () => {
       units: 7,
       paymentModes: 6,
       leadSources: 8,
-      kycTypes: 8,
+      kycTypes: 9,
       departments: 5,
       permissions: PERMISSION_CODES.length,
       roles: 3,
