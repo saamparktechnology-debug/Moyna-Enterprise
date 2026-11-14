@@ -1,14 +1,17 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   AddCommissionRuleRequestSchema,
   BROKER_SORT_FIELDS,
   BrokerLedgerQuerySchema,
+  BrokerFileUploadQuerySchema,
   BrokerListQuerySchema,
   CreateBrokerRequestSchema,
   UpdateBrokerRequestSchema,
 } from '@erp/contracts';
 import type {
   Broker,
+  BrokerFile,
   BrokerLedger,
   BrokerListResponse,
   BrokerSummary,
@@ -29,7 +32,25 @@ import {
 } from '../../common/pagination/pagination.js';
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
+import { STORAGE_SERVICE } from '../../common/storage/storage.service.js';
+import type { StorageService } from '../../common/storage/storage.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
+import { checkUploadedFile, FILE_EXTENSIONS } from './uploads.js';
+
+/** More than this many documents on one broker is almost certainly a mistake. */
+const MAX_BROKER_DOCUMENTS = 20;
+
+export interface BrokerFileInput {
+  query: unknown;
+  body: unknown;
+  declaredType: string | undefined;
+}
+
+export interface BrokerStoredFile {
+  body: Buffer;
+  contentType: string;
+  fileName: string;
+}
 
 const STALE = 'This broker was changed by someone else. Reload them and try again';
 const fixed = (value: Prisma.Decimal | string | number | null): string =>
@@ -42,6 +63,7 @@ interface Figures {
 
 const BROKER_INCLUDE = {
   commissionRules: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] },
+  files: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
 } satisfies Prisma.BrokerInclude;
 type BrokerRow = Prisma.BrokerGetPayload<{ include: typeof BROKER_INCLUDE }>;
 
@@ -50,6 +72,7 @@ export class BrokersService {
   constructor(
     @Inject(TransactionService) private readonly transactions: TransactionService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
   async list(rawQuery: unknown): Promise<BrokerListResponse> {
@@ -69,7 +92,10 @@ export class BrokersService {
         tx.broker.findMany({
           where,
           orderBy,
-          include: { commissionRules: { where: { isActive: true } } },
+          include: {
+            commissionRules: { where: { isActive: true } },
+            files: { where: { kind: 'PHOTO' }, select: { id: true } },
+          },
           ...toSkipTake(query),
         }),
         tx.broker.count({ where }),
@@ -79,7 +105,9 @@ export class BrokersService {
         rows.map((row) => row.id),
       );
       return buildPage(
-        rows.map((row) => this.summary(row, row.commissionRules, figures.get(row.id))),
+        rows.map((row) =>
+          this.summary(row, row.commissionRules, figures.get(row.id), row.files.length > 0),
+        ),
         total,
         query,
       );
@@ -98,6 +126,7 @@ export class BrokersService {
         data: {
           name: input.name,
           phone: input.phone,
+          address: input.address,
           createdBy: auth.userId,
           updatedBy: auth.userId,
         },
@@ -106,7 +135,7 @@ export class BrokersService {
         action: 'BROKER_CREATED',
         entityType: 'Broker',
         entityId: row.id,
-        newValue: { name: row.name, phone: row.phone },
+        newValue: { name: row.name, phone: row.phone, address: row.address },
       });
       return this.present(tx, row.id);
     });
@@ -123,6 +152,7 @@ export class BrokersService {
         data: {
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.phone !== undefined ? { phone: input.phone } : {}),
+          ...(input.address !== undefined ? { address: input.address } : {}),
           ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
           updatedBy: auth.userId,
         },
@@ -136,8 +166,18 @@ export class BrokersService {
               : 'BROKER_DEACTIVATED',
         entityType: 'Broker',
         entityId: id,
-        oldValue: { name: current.name, phone: current.phone, isActive: current.isActive },
-        newValue: { name: next.name, phone: next.phone, isActive: next.isActive },
+        oldValue: {
+          name: current.name,
+          phone: current.phone,
+          address: current.address,
+          isActive: current.isActive,
+        },
+        newValue: {
+          name: next.name,
+          phone: next.phone,
+          address: next.address,
+          isActive: next.isActive,
+        },
       });
       return this.present(tx, id);
     });
@@ -199,7 +239,8 @@ export class BrokersService {
         SELECT ((c.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')::date AS entry_date, 1 AS ord,
                c.created_at AT TIME ZONE 'UTC' AS at,
                'COMMISSION' AS type, i.invoice_no AS doc_no, c.id AS doc_id, br.code AS branch_code,
-               'Commission on ' || COALESCE(i.invoice_no, 'an invoice') AS description,
+               CASE WHEN c.kind = 'GIFT' THEN 'Gift (' || c.gift_name || ') on ' ELSE 'Commission on ' END
+                 || COALESCE(i.invoice_no, 'an invoice') AS description,
                c.amount AS increase, 0::numeric AS decrease
         FROM commissions c JOIN invoices i ON i.id = c.invoice_id JOIN branches br ON br.id = c.branch_id
         WHERE c.broker_id = ${id}::uuid
@@ -334,15 +375,25 @@ export class BrokersService {
   }
 
   private summary(
-    row: { id: string; name: string; phone: string | null; isActive: boolean; createdAt: Date },
+    row: {
+      id: string;
+      name: string;
+      phone: string | null;
+      address: string | null;
+      isActive: boolean;
+      createdAt: Date;
+    },
     active: readonly { type: 'PERCENT' | 'FIXED'; value: Prisma.Decimal }[],
     figures: Figures | undefined,
+    hasPhoto: boolean,
   ): BrokerSummary {
     const rule = active[0];
     return {
       id: row.id,
       name: row.name,
       phone: row.phone,
+      address: row.address,
+      hasPhoto,
       isActive: row.isActive,
       activeRule: rule ? { type: rule.type, value: rule.value.toFixed(2) } : null,
       payable: figures?.payable ?? '0.00',
@@ -376,9 +427,211 @@ export class BrokersService {
         row,
         row.commissionRules.filter((r) => r.isActive),
         figures.get(id),
+        row.files.some((file) => file.kind === 'PHOTO'),
       ),
       rowVersion: row.rowVersion,
       rules,
+      photo: row.files.filter((file) => file.kind === 'PHOTO').map(toFileDto)[0] ?? null,
+      documents: row.files.filter((file) => file.kind === 'DOCUMENT').map(toFileDto),
     };
   }
+
+  // ---------- photo and documents ----------
+
+  /** Sets the broker's photo, replacing the one on file. */
+  async setPhoto(auth: AuthContext, id: string, input: BrokerFileInput): Promise<Broker> {
+    const query = BrokerFileUploadQuerySchema.parse(input.query);
+    const { bytes, mimeType } = checkUploadedFile(input.body, input.declaredType, false);
+    const objectKey = `brokers/${id}/${randomUUID()}.${FILE_EXTENSIONS[mimeType]}`;
+    let stored = false;
+    let replacedKey: string | null = null;
+    try {
+      const result = await this.transactions.run(async (tx) => {
+        await this.lockBroker(tx, id);
+        const old = await tx.brokerFile.findFirst({ where: { brokerId: id, kind: 'PHOTO' } });
+        await this.storage.put(objectKey, bytes, mimeType);
+        stored = true;
+        const data = {
+          objectKey,
+          fileName: query.fileName,
+          mimeType,
+          sizeBytes: bytes.length,
+          updatedBy: auth.userId,
+        };
+        if (old) {
+          replacedKey = old.objectKey;
+          await tx.brokerFile.update({ where: { id: old.id }, data });
+        } else
+          await tx.brokerFile.create({
+            data: { brokerId: id, kind: 'PHOTO', ...data, createdBy: auth.userId },
+          });
+        await this.audit.record(tx, {
+          action: 'BROKER_PHOTO_SET',
+          entityType: 'Broker',
+          entityId: id,
+          newValue: { fileName: query.fileName, sizeBytes: bytes.length, replaced: old !== null },
+        });
+        return this.present(tx, id);
+      });
+      if (replacedKey) await this.storage.delete(replacedKey).catch(() => undefined);
+      return result;
+    } catch (error) {
+      if (stored) await this.storage.delete(objectKey).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async removePhoto(auth: AuthContext, id: string): Promise<Broker> {
+    let removedKey: string | null = null;
+    const result = await this.transactions.run(async (tx) => {
+      await this.lockBroker(tx, id);
+      const photo = await tx.brokerFile.findFirst({ where: { brokerId: id, kind: 'PHOTO' } });
+      if (!photo) throw new NotFoundError('Broker photo');
+      removedKey = photo.objectKey;
+      await tx.brokerFile.delete({ where: { id: photo.id } });
+      await this.audit.record(tx, {
+        action: 'BROKER_PHOTO_REMOVED',
+        entityType: 'Broker',
+        entityId: id,
+        oldValue: { fileName: photo.fileName },
+      });
+      return this.present(tx, id);
+    });
+    if (removedKey) await this.storage.delete(removedKey).catch(() => undefined);
+    return result;
+  }
+
+  async photoFile(id: string): Promise<BrokerStoredFile> {
+    const row = await this.transactions.run((tx) =>
+      tx.brokerFile.findFirst({ where: { brokerId: id, kind: 'PHOTO' } }),
+    );
+    if (!row) throw new NotFoundError('Broker photo');
+    return this.readFile(row);
+  }
+
+  /** Adds a document (an ID proof, an agreement) to the broker. */
+  async addDocument(auth: AuthContext, id: string, input: BrokerFileInput): Promise<Broker> {
+    const query = BrokerFileUploadQuerySchema.parse(input.query);
+    const { bytes, mimeType } = checkUploadedFile(input.body, input.declaredType, true);
+    const objectKey = `brokers/${id}/${randomUUID()}.${FILE_EXTENSIONS[mimeType]}`;
+    let stored = false;
+    try {
+      return await this.transactions.run(async (tx) => {
+        await this.lockBroker(tx, id);
+        const count = await tx.brokerFile.count({ where: { brokerId: id, kind: 'DOCUMENT' } });
+        if (count >= MAX_BROKER_DOCUMENTS)
+          throw new BusinessRuleError('This broker has the most documents allowed', [
+            { field: 'file', message: `At most ${MAX_BROKER_DOCUMENTS} documents can be kept` },
+          ]);
+        await this.storage.put(objectKey, bytes, mimeType);
+        stored = true;
+        const row = await tx.brokerFile.create({
+          data: {
+            brokerId: id,
+            kind: 'DOCUMENT',
+            label: query.label ?? null,
+            objectKey,
+            fileName: query.fileName,
+            mimeType,
+            sizeBytes: bytes.length,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          },
+        });
+        await this.audit.record(tx, {
+          action: 'BROKER_DOCUMENT_ADDED',
+          entityType: 'Broker',
+          entityId: id,
+          newValue: {
+            fileId: row.id,
+            label: row.label,
+            fileName: row.fileName,
+            sizeBytes: row.sizeBytes,
+          },
+        });
+        return this.present(tx, id);
+      });
+    } catch (error) {
+      if (stored) await this.storage.delete(objectKey).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async removeDocument(auth: AuthContext, id: string, fileId: string): Promise<Broker> {
+    let removedKey: string | null = null;
+    const result = await this.transactions.run(async (tx) => {
+      await this.lockBroker(tx, id);
+      const row = await tx.brokerFile.findFirst({
+        where: { id: fileId, brokerId: id, kind: 'DOCUMENT' },
+      });
+      if (!row) throw new NotFoundError('Broker document', fileId);
+      removedKey = row.objectKey;
+      await tx.brokerFile.delete({ where: { id: row.id } });
+      await this.audit.record(tx, {
+        action: 'BROKER_DOCUMENT_REMOVED',
+        entityType: 'Broker',
+        entityId: id,
+        oldValue: { fileId: row.id, label: row.label, fileName: row.fileName },
+      });
+      return this.present(tx, id);
+    });
+    if (removedKey) await this.storage.delete(removedKey).catch(() => undefined);
+    return result;
+  }
+
+  async documentFile(id: string, fileId: string): Promise<BrokerStoredFile> {
+    const row = await this.transactions.run(async (tx) => {
+      const found = await tx.brokerFile.findFirst({
+        where: { id: fileId, brokerId: id, kind: 'DOCUMENT' },
+      });
+      if (found)
+        await this.audit.record(tx, {
+          action: 'BROKER_DOCUMENT_VIEWED',
+          entityType: 'Broker',
+          entityId: id,
+          newValue: { fileId: found.id, fileName: found.fileName },
+        });
+      return found;
+    });
+    if (!row) throw new NotFoundError('Broker document', fileId);
+    return this.readFile(row);
+  }
+
+  private async readFile(row: {
+    objectKey: string;
+    mimeType: string;
+    fileName: string;
+  }): Promise<BrokerStoredFile> {
+    const object = await this.storage.get(row.objectKey);
+    if (!object) throw new NotFoundError('The stored file');
+    return { body: object.body, contentType: row.mimeType, fileName: row.fileName };
+  }
+
+  /** Serialises changes to one broker's files, so two uploads cannot both pass the same limit check. */
+  private async lockBroker(tx: TxClient, id: string): Promise<void> {
+    const rows = await tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM brokers WHERE id = ${id}::uuid FOR UPDATE`,
+    );
+    if (rows.length === 0) throw new NotFoundError('Broker', id);
+  }
+}
+
+function toFileDto(row: {
+  id: string;
+  kind: string;
+  label: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  updatedAt: Date;
+}): BrokerFile {
+  return {
+    id: row.id,
+    kind: row.kind === 'PHOTO' ? 'PHOTO' : 'DOCUMENT',
+    label: row.label,
+    fileName: row.fileName,
+    mimeType: row.mimeType as BrokerFile['mimeType'],
+    sizeBytes: row.sizeBytes,
+    uploadedAt: row.updatedAt.toISOString(),
+  };
 }

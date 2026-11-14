@@ -734,9 +734,9 @@ describe('credit notes', () => {
         expect(response.headers['cache-control']).toBe('no-store');
         const text = (response.body as Buffer).toString('latin1');
         expect(text.startsWith('%PDF-1.4')).toBe(true);
-        expect(text).toContain(`Credit note no: ${approvedNote.creditNoteNo}`);
-        expect(text).toContain(`Against invoice: ${invoice.invoiceNo}`);
-        expect(text).toContain('GSTIN: 27AAPFU0939F1ZV');
+        expect(text).toContain(`Credit Note No:- ${approvedNote.creditNoteNo}`);
+        expect(text).toContain(`Against invoice:- ${invoice.invoiceNo}`);
+        expect(text).toContain('GST IN: 27AAPFU0939F1ZV');
         expect(text).toContain('Rupees');
         expect(text).not.toContain('PENDING');
       });

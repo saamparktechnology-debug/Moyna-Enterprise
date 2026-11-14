@@ -253,13 +253,15 @@ export function HorizontalBarCard({
 
 /** Sales and money collected, added up day after day across the period. */
 export function RunningTotalChart({ points }: { points: DashboardTrendPoint[] }) {
-  let sales = 0;
-  let collected = 0;
-  const data = points.map((point) => {
-    sales += Number(point.sales);
-    collected += Number(point.collected);
-    return { day: point.day.slice(5), Sales: sales, Collected: collected };
-  });
+  const data = points.reduce<{ day: string; Sales: number; Collected: number }[]>((rows, point) => {
+    const before = rows[rows.length - 1];
+    rows.push({
+      day: point.day.slice(5),
+      Sales: (before?.Sales ?? 0) + Number(point.sales),
+      Collected: (before?.Collected ?? 0) + Number(point.collected),
+    });
+    return rows;
+  }, []);
   return (
     <Card>
       <CardHeader>

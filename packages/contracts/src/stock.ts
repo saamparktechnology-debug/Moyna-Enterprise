@@ -13,7 +13,7 @@ export const STOCK_STATES = [
 export const StockStateSchema = z.enum(STOCK_STATES);
 export type StockStateName = z.infer<typeof StockStateSchema>;
 
-export const SERIAL_UNIT_STATES = [...STOCK_STATES, 'SOLD', 'SCRAPPED'] as const;
+export const SERIAL_UNIT_STATES = [...STOCK_STATES, 'SOLD', 'SCRAPPED', 'INSTALLED'] as const;
 export const SerialUnitStateSchema = z.enum(SERIAL_UNIT_STATES);
 export type SerialUnitStateName = z.infer<typeof SerialUnitStateSchema>;
 
@@ -31,6 +31,10 @@ export const MOVEMENT_TYPES = [
   'EXCHANGE_IN',
   'EXCHANGE_OUT',
   'WRITE_OFF',
+  'ASSEMBLY_USED',
+  'ASSEMBLY_MADE',
+  'ASSEMBLY_RETURNED',
+  'ASSEMBLY_UNMADE',
 ] as const;
 export const MovementTypeSchema = z.enum(MOVEMENT_TYPES);
 export type MovementTypeName = z.infer<typeof MovementTypeSchema>;

@@ -31,6 +31,7 @@ import { TYPE_TEXT } from './billing-shared';
 import { useAuth } from '@/features/auth/auth-provider';
 import { ruleText } from '../brokers/brokers-shared';
 import { useBrokers } from '../brokers/use-brokers';
+import { useGstRates } from '../items/use-items';
 import { useInvoiceMutations, useInvoicePreview, useSellableUnits } from './use-billing';
 
 const SEARCH_DELAY_MS = 300;
@@ -42,6 +43,9 @@ interface LineState {
   qty: string;
   unitPrice: string;
   discount: string;
+  /** The GST rate and HSN code this line is billed at on a GST invoice. They start as the item's own. */
+  taxRate: string;
+  hsnCode: string;
 }
 
 let nextKey = 1;
@@ -52,6 +56,8 @@ const blankLine = (): LineState => ({
   qty: '1',
   unitPrice: '',
   discount: '',
+  taxRate: '',
+  hsnCode: '',
 });
 
 function linesOf(invoice: Invoice | null): LineState[] {
@@ -68,6 +74,8 @@ function linesOf(invoice: Invoice | null): LineState[] {
     qty: String(line.qty),
     unitPrice: line.unitPrice,
     discount: line.discountAmount === '0.00' ? '' : line.discountAmount,
+    taxRate: line.taxRate ?? '',
+    hsnCode: line.hsnCode ?? '',
   }));
 }
 
@@ -93,6 +101,13 @@ function toRequest(
       unitPrice: line.unitPrice.trim(),
       discountAmount: line.discount.trim() === '' ? '0.00' : line.discount.trim(),
       ...(line.serialUnitId ? { serialUnitId: line.serialUnitId } : {}),
+      // The type of the invoice decides whether GST is charged, so the rate and HSN code are sent only for GST.
+      ...(type === 'GST'
+        ? {
+            taxRate: line.taxRate === '' ? null : line.taxRate,
+            hsnCode: line.hsnCode.trim() === '' ? null : line.hsnCode.trim(),
+          }
+        : {}),
     })),
   };
 }
@@ -115,7 +130,6 @@ const overStaffLimit = (line: LineState): boolean => {
 };
 
 interface SerialSelectProps {
-  index: number;
   itemId: string;
   branchId: string;
   value: string;
@@ -124,15 +138,7 @@ interface SerialSelectProps {
   onChange: (id: string) => void;
 }
 
-function SerialSelect({
-  index,
-  itemId,
-  branchId,
-  value,
-  taken,
-  error,
-  onChange,
-}: SerialSelectProps) {
+function SerialSelect({ itemId, branchId, value, taken, error, onChange }: SerialSelectProps) {
   const units = useSellableUnits(itemId, branchId);
   return (
     <FormField label={`Serial number `} error={error}>
@@ -214,6 +220,7 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
     can('brokers.view'),
   );
   const usableBrokers = brokers.data?.items ?? [];
+  const gstRates = useGstRates();
 
   const change = (key: number, patch: Partial<LineState>) =>
     setLines((previous) =>
@@ -479,13 +486,17 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
                       item,
                       serialUnitId: '',
                       qty: '1',
+                      taxRate: item?.taxRate ?? '',
+                      hsnCode: item?.hsnCode ?? '',
+                      // An item that was assembled has a selling price; the price starts from it unless one was typed.
+                      unitPrice:
+                        line.unitPrice !== '' ? line.unitPrice : (item?.sellingPrice ?? ''),
                     })
                   }
                 />
               </div>
               {line.item?.isSerialized ? (
                 <SerialSelect
-                  index={index}
                   itemId={line.item.id}
                   branchId={branchId}
                   value={line.serialUnitId}
@@ -533,6 +544,45 @@ export function InvoiceFormDialog({ invoice, onClose, onSaved }: InvoiceFormDial
                   />
                 )}
               </FormField>
+              {type === 'GST' ? (
+                <div className="grid gap-3 sm:col-span-6 sm:grid-cols-2">
+                  <FormField
+                    label="GST rate"
+                    error={at('taxRate')}
+                    hint="Chosen on the bill. The item's rate is only the starting point"
+                  >
+                    {(props) => (
+                      <Select
+                        {...props}
+                        value={line.taxRate}
+                        onChange={(event) => change(line.key, { taxRate: event.target.value })}
+                      >
+                        <option value="">Choose the rate</option>
+                        {(gstRates.data ?? []).map((rate) => (
+                          <option key={rate.rate} value={rate.rate}>
+                            {rate.label}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </FormField>
+                  <FormField
+                    label="HSN code"
+                    error={at('hsnCode')}
+                    hint="4 to 8 digits. Needed for a buyer with a GSTIN"
+                  >
+                    {(props) => (
+                      <Input
+                        {...props}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={line.hsnCode}
+                        onChange={(event) => change(line.key, { hsnCode: event.target.value })}
+                      />
+                    )}
+                  </FormField>
+                </div>
+              ) : null}
               {lines.length > 1 ? (
                 <div className="flex items-end">
                   <Button

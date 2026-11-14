@@ -459,7 +459,7 @@ describe('reports', () => {
   });
 
   describe('the catalog', () => {
-    it('lists all 16 reports with their columns for a Super Admin', async () => {
+    it('lists all 17 reports with their columns for a Super Admin', async () => {
       const response = await superAdmin.get('/reports');
       expect(response.status).toBe(200);
       const catalog = ReportCatalogSchema.parse(response.body);

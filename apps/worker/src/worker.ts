@@ -2,6 +2,7 @@ import pg from 'pg';
 import { runReminders } from './jobs/reminders.js';
 import { deliverNotification, NOTIFICATION_DELIVER_EVENT } from './notifications/deliver.js';
 import { LoggingProvider } from './notifications/provider.js';
+import { SmtpProvider } from './notifications/smtp-provider.js';
 import type { NotificationProvider } from './notifications/provider.js';
 import type { Logger } from 'pino';
 import type { WorkerEnv } from './config.js';
@@ -49,7 +50,17 @@ export async function startWorker(
   logger.info('Worker started: relaying outbox events to the domain-events queue');
 
   if (options.consumers) {
-    const provider = options.provider ?? new LoggingProvider(logger);
+    const provider =
+      options.provider ??
+      (env.SMTP_USER && env.SMTP_PASSWORD
+        ? new SmtpProvider(
+            env.SMTP_HOST,
+            env.SMTP_PORT,
+            env.SMTP_USER,
+            env.SMTP_PASSWORD,
+            env.SMTP_FROM ?? env.SMTP_USER,
+          )
+        : new LoggingProvider(logger));
     await boss.work<{ eventType: string; payload: { notificationId: string; userId: string } }>(
       QUEUES.DOMAIN_EVENTS,
       { batchSize: 10, pollingIntervalSeconds: 1 },

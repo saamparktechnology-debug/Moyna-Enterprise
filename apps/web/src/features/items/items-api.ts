@@ -7,9 +7,15 @@ import {
   ItemListResponseSchema,
   ItemSchema,
   LabelResponseSchema,
+  ManagedHsnListResponseSchema,
+  ManagedHsnSchema,
   UnitListResponseSchema,
 } from '@erp/contracts';
 import type {
+  CreateHsnRequest,
+  ManagedHsn,
+  ManagedHsnListResponse,
+  UpdateHsnRequest,
   AddBarcodeRequest,
   CreateItemCategoryRequest,
   CreateItemRequest,
@@ -110,4 +116,27 @@ export function searchHsn(search: string): Promise<HsnListResponse> {
   const query = new URLSearchParams({ page: '1', pageSize: '20' });
   if (search) query.set('search', search);
   return api.get(`/reference/hsn-codes?${query.toString()}`, HsnListResponseSchema);
+}
+
+// ---------- the HSN list ----------
+export interface ManagedHsnParams {
+  page: number;
+  pageSize: number;
+  search: string;
+  status: string;
+}
+export function listManagedHsn(params: ManagedHsnParams): Promise<ManagedHsnListResponse> {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+    status: params.status,
+  });
+  if (params.search) query.set('search', params.search);
+  return api.get(`/hsn-codes?${query.toString()}`, ManagedHsnListResponseSchema);
+}
+export function createHsn(values: CreateHsnRequest): Promise<ManagedHsn> {
+  return api.post('/hsn-codes', values, ManagedHsnSchema);
+}
+export function updateHsn(code: string, values: UpdateHsnRequest): Promise<ManagedHsn> {
+  return api.patch(`/hsn-codes/${code}`, values, ManagedHsnSchema);
 }

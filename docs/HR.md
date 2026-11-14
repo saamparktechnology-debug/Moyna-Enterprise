@@ -72,3 +72,42 @@ New columns on `staff`, `leave_requests`, `attendance` and `payroll_records`, an
 - A returning person starts again on a new join date; their earlier period stays in the records but is not a separate employment history.
 - Logins are not disabled when someone is marked as having left.
 - No export, payslip PDF or notifications (module 5.2); the leave events are queued for them.
+
+## Punches and pay by hours (chunk 8)
+
+- **Punch in and out as often as needed.** Each time is one punch; a person has at most one open at a time and punches never overlap. A working day is still the India date of the punch in, so a night shift stays on the day it began. The day's attendance row shows the first punch in, the last punch out and the minutes worked.
+- **Editing punches** needs the permission `attendance.edit_punches` (Admin and Super Admin by default; give it to or take it from a role in Users and roles). Add, change or remove a punch with a reason; the old and new times are audited. Not for a future day, before the person joined, after they left, on approved leave or in a month whose payroll is final, and not your own punches (a Super Admin may). The older "Correct attendance" replaces a day's punches with one.
+- **Pay** depends on the person's kind of salary: see "Two kinds of salary" below. (The company setting "Pay basis" of chunk 8 was removed.)
+
+## Two kinds of salary (chunk 12)
+
+Each person is paid in one of two ways, chosen on their staff profile (Staff, Add or Edit):
+
+- **Fixed monthly salary.** The salary for the days employed in the month, less unpaid leave. The hours worked do not change it.
+- **Paid by the day (no work, no pay).** A **daily rate** (for example 400 rupees) is the pay for a **full duty day** (8 hours unless the company sets another number in Settings, Company: Full duty, in hours). The work of each day is added up from its punches and counted in **whole 30-minute blocks**: 30 to 59 minutes count as 30, so 59 minutes is paid as 30 and 29 minutes as nothing. Each block pays the daily rate times 30 and divided by the full-duty minutes (400 a day is 25 for each half-hour). **Hours beyond full duty are paid at the same rate**, with no cap. A day with no work earns nothing, and a day of leave earns nothing. The month's pay is the total of the blocks, rounded to the paisa; payroll shows the hours worked, the minutes paid for and the daily rate.
+
+A person can be changed from one kind to the other (the right amount goes with each); what it was is kept in the audit trail. Payroll already made for a month does not change.
+
+## Employee agreements (chunk 10)
+
+An agreement paper for each employee, with **terms and rules that can be edited**.
+
+1. **Templates** (HR, Agreements, Templates): keep the terms you use often. "Start from example terms" gives a starting text only; have your own adviser check the wording. A template can be edited or switched off; changing it does not change agreements already made.
+2. **New agreement**: choose the employee and a template (or write the terms yourself) and the date it starts. The text is filled in and **can be edited** before printing. Details written as `{{employee_name}}`, `{{employee_code}}`, `{{designation}}`, `{{department}}`, `{{join_date}}`, `{{salary}}`, `{{duty_hours}}`, `{{effective_from}}`, `{{company_name}}`, `{{company_address}}`, `{{proprietor}}` and `{{today}}` are filled in for the employee when it is printed (use the buttons under the text). A name that is not one of these is refused so a typo cannot print as it is.
+3. **Print** the draft (a PDF with the company's heading and the agreement number `AG-ddmmyyyyhhmm`). At the end are two places to sign: **the employee on the left, the Super Admin on the right**.
+4. After both have signed the paper, **Upload signed copy** (a PDF, JPEG or PNG scan or photo, up to 5 MB, with the date it was signed and a tick for each of the two signatures). This is the acceptance. The agreement is then **frozen** as signed, with its details filled in as they were that day (the database refuses any later change); it can only be ended.
+5. **One agreement in force at a time.** Signing a new agreement for a person ends the one before it the day before the new one starts. **End** an agreement from a day with a reason (for example when the employee leaves). A draft that is not needed can be **thrown away** with a reason and stays in the list as discarded.
+6. **The employee** sees their own signed agreements under "My agreement" on their page and can read, print and open the signed copy. Drafts are not shown to them. Who opened a signed copy is recorded.
+
+Needs `hr.manage` to make, edit, upload, end and see all agreements; `hr.view` for an employee's own. The signed copies are kept in the same file store as customer KYC files (local disk unless the file store is changed). Audit: `AGREEMENT_CREATED`, `_UPDATED`, `_DISCARDED`, `_SIGNED`, `_ENDED`, `_COPY_VIEWED`, `AGREEMENT_TEMPLATE_CREATED` and `_UPDATED`.
+
+## Weekly offs, holidays and each person's roster (chunk 15)
+
+- **The company's weekly off days** (Settings, Company: *Weekly off days*): `SUN` by default; `SAT,SUN` for two days; `NONE` for no weekly off. **Pay daily staff for off days** (`YES` or `NO`, default `NO`) decides whether a person paid by the day is paid for the off days they do not work. Only the Super Admin can change settings.
+- **Company holidays** (HR, Holidays tab): a list for each year. Anyone who may see HR can read it; only the **Super Admin** adds or removes a holiday (a day can be a holiday once; the change is audited as `HOLIDAY_ADDED` and `HOLIDAY_REMOVED`).
+- **The roster of one employee** (HR, Staff, **Roster**, Super Admin only): the Super Admin can give a person **weekly off days of their own** (for example only Wednesday, or none) or hand them back to the company's, and can add **days off for that person alone** (with a reason). Managers can read a roster; they cannot change it. Audit: `STAFF_WEEKLY_OFF_SET`, `STAFF_DAY_OFF_ADDED`, `STAFF_DAY_OFF_REMOVED`. A day off cannot be added or removed in a month whose pay for that person is final, or before they joined or after they left.
+- **Which rule wins for a day:** the person's own day off, then a company holiday, then their weekly off (their own days if they have set ones, else the company's).
+- **Effect on pay (applies when a payroll is made; one already made keeps what it had):**
+  - *Fixed salary*: not changed, except that **leave taken over an off day is not counted as leave** (so an unpaid leave from Friday to Monday with a Sunday off counts 3 days, not 4).
+  - *Paid by the day*: paid for the hours worked, also on an off day. With **Pay daily staff for off days = YES** each off day they did not work adds one full duty day at the daily rate; the payroll note says "including N weekly off or holiday days". With NO (the default) nothing is added.
+- **On their own day** (HR, My day) a person is told when today is a holiday, their weekly off or a day off of their own. They can still punch in if asked to work; the hours then count as normal.

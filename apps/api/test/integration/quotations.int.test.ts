@@ -470,7 +470,14 @@ describe('quotations and custom orders', () => {
 
   describe('the receipt for an advance', () => {
     const receipt = (client: TestClient, paymentId: string) =>
-      client.get(`/payments/${paymentId}/receipt`);
+      client
+        .get(`/payments/${paymentId}/receipt`)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        });
 
     it('gives a printable advance receipt that names the quotation, what is held and what is left', async () => {
       const a = await accepted();
@@ -486,8 +493,8 @@ describe('quotations and custom orders', () => {
       expect(text).toContain('ADVANCE RECEIPT');
       expect(text).toContain(advanceRow?.receiptNo ?? 'x');
       expect(text).toContain(a.quotationNo);
-      expect(text).toContain('30000.00');
-      expect(text).toContain('65000.00');
+      expect(text).toContain('30,000.00');
+      expect(text).toContain('65,000.00');
     });
 
     it('counts every advance held in the balance, and says plainly when one was reversed', async () => {
@@ -496,7 +503,7 @@ describe('quotations and custom orders', () => {
       const second = await take(a, '5000.00');
       const newest = second.advances.find((item) => item.amount === '5000.00');
       const before = await receipt(staffA, newest?.paymentId ?? '');
-      expect(Buffer.from(before.body as Buffer).toString('latin1')).toContain('15000.00');
+      expect(Buffer.from(before.body as Buffer).toString('latin1')).toContain('15,000.00');
 
       const reversed = await adminA.post(`/payments/${newest?.paymentId}/reverse`, {
         reason: 'Cheque bounced',
@@ -507,7 +514,7 @@ describe('quotations and custom orders', () => {
       ).toString('latin1');
       expect(after).toContain('REVERSED on');
       expect(after).toContain('Cheque bounced');
-      expect(after).toContain('10000.00');
+      expect(after).toContain('10,000.00');
     });
 
     it('is refused for someone who may not view payments, and unknown ids are not found', async () => {

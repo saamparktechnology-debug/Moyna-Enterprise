@@ -1,5 +1,5 @@
 //apps/web/src/features/payments/payments.test.tsx
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentSummarySchema } from '@erp/contracts';
@@ -792,5 +792,81 @@ describe('the receipt of a payment', () => {
       'blob:receipt',
     );
     expect(calls.some((c) => c.key === 'GET /api/payments/pay-1/receipt')).toBe(true);
+  });
+});
+
+describe('following up an invoice that is not paid', () => {
+  const base = `/api/dues/invoices/${INVOICE_ID}`;
+  const followHandlers = (
+    permissions: string[] = MANAGER,
+    guarantor: unknown = null,
+  ): Record<string, RouteHandler> =>
+    handlers(permissions, {
+      'GET /api/dues?*': () =>
+        jsonResponse(dueList([due({ nextPromisedDate: '2026-12-01', hasGuarantor: true })])),
+      [`GET ${base}/promises`]: () =>
+        jsonResponse({
+          items: [
+            {
+              id: 'p1',
+              invoiceId: INVOICE_ID,
+              promisedDate: '2026-12-01',
+              note: 'After harvest',
+              createdAt: '2026-11-01T00:00:00.000Z',
+              createdByName: 'Asha',
+            },
+          ],
+        }),
+      [`GET ${base}/guarantor`]: () => jsonResponse({ guarantor }),
+      [`POST ${base}/promises`]: () => jsonResponse({ items: [] }, 201),
+      [`PUT ${base}/guarantor`]: () => jsonResponse({ guarantor: null }),
+    });
+
+  it('shows the next promised date and whether a guarantor is noted', async () => {
+    open(followHandlers());
+    const table = await screen.findByRole('table', { name: 'Invoices due' });
+    const row = within(table).getAllByRole('row')[1] as HTMLElement;
+    expect(row).toHaveTextContent('2026-12-01');
+    expect(row).toHaveTextContent('Has guarantor');
+  });
+
+  it('saves a promised date and a guarantor', async () => {
+    const { calls } = open(followHandlers());
+    await userEvent.click(await screen.findByRole('button', { name: /Follow up HQ\/GI/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText(/Promised to pay on 2026-12-01/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('New promised date'), {
+      target: { value: '2999-01-01' },
+    });
+    await userEvent.type(within(dialog).getByLabelText('Guarantor name'), 'Mohan Lal');
+    await userEvent.type(within(dialog).getByLabelText('Guarantor phone'), '9000000002');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(posts(calls, `POST ${base}/promises`)).toHaveLength(1));
+    expect(posts(calls, `POST ${base}/promises`)[0]?.body).toMatchObject({
+      promisedDate: '2999-01-01',
+    });
+    await waitFor(() => expect(posts(calls, `PUT ${base}/guarantor`)).toHaveLength(1));
+    expect(posts(calls, `PUT ${base}/guarantor`)[0]?.body).toMatchObject({
+      name: 'Mohan Lal',
+      phone: '9000000002',
+    });
+  });
+
+  it('does not send a promised date in the past', async () => {
+    const { calls } = open(followHandlers());
+    await userEvent.click(await screen.findByRole('button', { name: /Follow up HQ\/GI/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('New promised date'), {
+      target: { value: '2020-01-01' },
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByText(/cannot be in the past/)).toBeInTheDocument();
+    expect(posts(calls, `POST ${base}/promises`)).toHaveLength(0);
+  });
+
+  it('offers no follow-up to someone who cannot record payments', async () => {
+    open(followHandlers(['payments.view']));
+    await screen.findByRole('table', { name: 'Invoices due' });
+    expect(screen.queryByRole('button', { name: /Follow up/ })).not.toBeInTheDocument();
   });
 });

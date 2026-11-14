@@ -17,6 +17,8 @@ import {
 } from '../../common/pagination/pagination.js';
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
+import { STORAGE_SERVICE } from '../../common/storage/storage.service.js';
+import type { StorageService } from '../../common/storage/storage.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
 import { commissionFor, totalReduction } from './commission-calc.js';
 import { COMMISSION_INCLUDE, effectiveOf, toCommissionDto } from './commissions.mapper.js';
@@ -29,23 +31,22 @@ export class CommissionsService {
     @Inject(TransactionService) private readonly transactions: TransactionService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
   // ---------- used while billing ----------
 
-  /** A broker can go on an invoice only while active and with a rule in force. Returns why not, or null. */
+  /**
+   * A broker can go on an invoice while active. A standing rule is not needed: the commission is agreed on the invoice.
+   * Returns why not, or null.
+   */
   async whyUnusable(tx: TxClient, brokerId: string): Promise<string | null> {
     const broker = await tx.broker.findUnique({
       where: { id: brokerId },
-      select: {
-        isActive: true,
-        commissionRules: { where: { isActive: true }, select: { id: true } },
-      },
+      select: { isActive: true },
     });
     if (!broker) return 'Choose a broker from the list';
     if (!broker.isActive) return 'This broker is no longer active';
-    if (broker.commissionRules.length === 0)
-      return 'This broker has no commission rule. Add one, or take the broker off the invoice';
     return null;
   }
 
@@ -65,8 +66,11 @@ export class CommissionsService {
   }
 
   /**
-   * Works out the commission when an invoice is issued, on the rule in force at that moment, and keeps it. A later change
-   * of rule does not touch it. Called inside the issuing transaction, so the invoice and its commission stand or fall together.
+   * Records the commission when an invoice is issued, and keeps it. What was agreed on the invoice decides: a fixed amount
+   * or a gift (worth an amount, never more than the taxable value), or no commission at all. An invoice with nothing agreed
+   * (an older draft) falls back to the broker's rule in force at that moment, if there is one. A later change of rule does
+   * not touch a commission. A gift is not stock and moves nothing in the stock ledger. Called inside the issuing
+   * transaction, so the invoice and its commission stand or fall together.
    */
   async accrue(
     tx: TxClient,
@@ -76,21 +80,52 @@ export class CommissionsService {
       branchId: string;
       brokerId: string | null;
       taxableValue: Prisma.Decimal;
+      commissionType: string | null;
+      commissionAmount: Prisma.Decimal | null;
+      giftName: string | null;
+      giftPhotoKey: string | null;
+      giftPhotoFileName: string | null;
+      giftPhotoMime: string | null;
+      giftPhotoSize: number | null;
     },
   ): Promise<void> {
     if (!invoice.brokerId) return;
     await this.assertUsable(tx, invoice.brokerId);
-    const rule = await tx.commissionRule.findFirstOrThrow({
-      where: { brokerId: invoice.brokerId, isActive: true },
-    });
-    const amount = commissionFor(rule, invoice.taxableValue);
+    if (invoice.commissionType === 'NONE') return;
+    const agreed =
+      (invoice.commissionType === 'FIXED' || invoice.commissionType === 'GIFT') &&
+      invoice.commissionAmount !== null;
+    const rule = agreed
+      ? null
+      : await tx.commissionRule.findFirst({
+          where: { brokerId: invoice.brokerId, isActive: true },
+        });
+    if (!agreed && !rule) return;
+    const kind: 'RULE' | 'FIXED' | 'GIFT' = agreed
+      ? invoice.commissionType === 'GIFT'
+        ? 'GIFT'
+        : 'FIXED'
+      : 'RULE';
+    const amount = rule
+      ? commissionFor(rule, invoice.taxableValue)
+      : commissionFor(
+          { type: 'FIXED', value: invoice.commissionAmount ?? new Decimal(0) },
+          invoice.taxableValue,
+        );
     if (amount.lte(0)) return;
+    const gift = kind === 'GIFT';
     const created = await tx.commission.create({
       data: {
         branchId: invoice.branchId,
         brokerId: invoice.brokerId,
         invoiceId: invoice.id,
-        ruleId: rule.id,
+        ruleId: rule?.id ?? null,
+        kind,
+        giftName: gift ? invoice.giftName : null,
+        giftPhotoKey: gift ? invoice.giftPhotoKey : null,
+        giftPhotoFileName: gift ? invoice.giftPhotoFileName : null,
+        giftPhotoMime: gift ? invoice.giftPhotoMime : null,
+        giftPhotoSize: gift ? invoice.giftPhotoSize : null,
         amount,
         baseAmount: invoice.taxableValue,
         status: 'PAYABLE',
@@ -106,9 +141,11 @@ export class CommissionsService {
       newValue: {
         invoiceId: invoice.id,
         brokerId: invoice.brokerId,
-        ruleId: rule.id,
-        ruleType: rule.type,
-        ruleValue: rule.value.toFixed(2),
+        kind,
+        ruleId: rule?.id ?? null,
+        ruleType: rule?.type ?? null,
+        ruleValue: rule?.value.toFixed(2) ?? null,
+        giftName: gift ? invoice.giftName : null,
         base: invoice.taxableValue.toFixed(2),
         amount: amount.toFixed(2),
       },
@@ -123,6 +160,21 @@ export class CommissionsService {
         amount: amount.toFixed(2),
       },
     });
+  }
+
+  /** The photo of the gift a commission was agreed as. */
+  async giftPhoto(id: string): Promise<{ body: Buffer; contentType: string; fileName: string }> {
+    const row = await this.transactions.run((tx) =>
+      tx.commission.findUnique({
+        where: { id },
+        select: { giftPhotoKey: true, giftPhotoMime: true, giftPhotoFileName: true },
+      }),
+    );
+    if (!row?.giftPhotoKey || !row.giftPhotoMime || !row.giftPhotoFileName)
+      throw new NotFoundError('Gift photo');
+    const object = await this.storage.get(row.giftPhotoKey);
+    if (!object) throw new NotFoundError('The stored file');
+    return { body: object.body, contentType: row.giftPhotoMime, fileName: row.giftPhotoFileName };
   }
 
   /** An approved credit note takes back the credited share of the invoice's commission. */

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DateOnlySchema, daysBetween, todayInIndia } from './battery-dates.js';
+import { OffDaySchema, WeekdaySchema } from './holidays.js';
 import { MoneyAmountSchema } from './billing.js';
 import { paginatedSchema, PaginationQuerySchema } from './pagination.js';
 import { toPaise } from './payments.js';
@@ -88,15 +89,57 @@ const EmployeeCodeSchema = z
 const DesignationSchema = z.string().trim().min(1).max(80, 'Use at most 80 characters');
 const ReasonSchema = z.string().trim().min(3, 'Give a reason of at least 3 characters').max(300);
 
-export const CreateStaffRequestSchema = z.object({
-  userId: z.uuid('Choose the person'),
-  branchId: z.uuid().optional(),
-  employeeCode: EmployeeCodeSchema,
-  department: z.string().trim().min(1).max(30).nullable().default(null),
-  designation: DesignationSchema.nullable().default(null),
-  joinDate: DateOnlySchema,
-  monthlySalary: MoneyAmountSchema,
-});
+export const SALARY_TYPES = ['FIXED', 'DAILY'] as const;
+export const SalaryTypeSchema = z.enum(SALARY_TYPES);
+export type SalaryTypeName = z.infer<typeof SalaryTypeSchema>;
+
+/** FIXED is a monthly salary; DAILY is "no work, no pay" at a daily rate. The right amount goes with each. */
+const salaryAmounts = (
+  value: {
+    salaryType?: SalaryTypeName | undefined;
+    monthlySalary?: string | undefined;
+    dailyRate?: string | undefined;
+  },
+  context: z.RefinementCtx,
+): void => {
+  if (value.salaryType === 'FIXED') {
+    if (value.monthlySalary === undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['monthlySalary'],
+        message: 'Enter the monthly salary',
+      });
+    if (value.dailyRate !== undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['dailyRate'],
+        message: 'A fixed salary has no daily rate',
+      });
+  } else if (value.salaryType === 'DAILY') {
+    if (value.dailyRate === undefined || !(Number(value.dailyRate) > 0))
+      context.addIssue({ code: 'custom', path: ['dailyRate'], message: 'Enter the daily rate' });
+    if (value.monthlySalary !== undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['monthlySalary'],
+        message: 'Pay by the day has no monthly salary',
+      });
+  }
+};
+
+export const CreateStaffRequestSchema = z
+  .object({
+    userId: z.uuid('Choose the person'),
+    branchId: z.uuid().optional(),
+    employeeCode: EmployeeCodeSchema,
+    department: z.string().trim().min(1).max(30).nullable().default(null),
+    designation: DesignationSchema.nullable().default(null),
+    joinDate: DateOnlySchema,
+    salaryType: SalaryTypeSchema.default('FIXED'),
+    monthlySalary: MoneyAmountSchema.optional(),
+    dailyRate: MoneyAmountSchema.optional(),
+  })
+  .superRefine(salaryAmounts);
 export type CreateStaffRequest = z.input<typeof CreateStaffRequestSchema>;
 
 export const UpdateStaffRequestSchema = z
@@ -104,12 +147,15 @@ export const UpdateStaffRequestSchema = z
     employeeCode: EmployeeCodeSchema.optional(),
     department: z.string().trim().min(1).max(30).nullable().optional(),
     designation: DesignationSchema.nullable().optional(),
+    salaryType: SalaryTypeSchema.optional(),
     monthlySalary: MoneyAmountSchema.optional(),
+    dailyRate: MoneyAmountSchema.optional(),
     rowVersion: z.number().int().min(1),
   })
   .refine((value) => Object.keys(value).some((key) => key !== 'rowVersion'), {
     message: 'Change at least one field',
-  });
+  })
+  .superRefine(salaryAmounts);
 export type UpdateStaffRequest = z.input<typeof UpdateStaffRequestSchema>;
 
 export const DeactivateStaffRequestSchema = z.object({
@@ -139,7 +185,13 @@ export const StaffSummarySchema = z.object({
   joinDate: z.string(),
   leftOn: z.string().nullable(),
   status: StaffStatusSchema,
+  salaryType: SalaryTypeSchema.optional(),
+  /** The monthly salary of a FIXED salary; 0.00 for someone paid by the day. */
   monthlySalary: z.string(),
+  /** The rate for a full duty day, for someone paid by the day. */
+  dailyRate: z.string().nullable().optional(),
+  /** Their own weekly off days, or null when the company's weekly off days apply. */
+  weeklyOffDays: z.array(WeekdaySchema).nullable().optional(),
   createdAt: z.string(),
 });
 export type StaffSummary = z.infer<typeof StaffSummarySchema>;
@@ -215,6 +267,93 @@ export const CorrectAttendanceRequestSchema = z
   });
 export type CorrectAttendanceRequest = z.input<typeof CorrectAttendanceRequestSchema>;
 
+export const PUNCH_SOURCES = ['SELF', 'MANAGER'] as const;
+
+/** One punch in and, once it is closed, its punch out. A person may punch in and out as many times as they like in a day. */
+export const PunchSchema = z.object({
+  id: z.string(),
+  staffId: z.string(),
+  staffName: z.string(),
+  employeeCode: z.string(),
+  workDate: z.string(),
+  punchedInAt: z.string(),
+  punchedOutAt: z.string().nullable(),
+  /** Whole minutes between the two, once the punch is closed. */
+  minutes: z.number().int().nullable(),
+  source: z.enum(PUNCH_SOURCES),
+  editedByName: z.string().nullable(),
+  editReason: z.string().nullable(),
+  rowVersion: z.number().int(),
+});
+export type Punch = z.infer<typeof PunchSchema>;
+
+export const PunchListQuerySchema = z.object({
+  date: DateOnlySchema,
+  staffId: z.uuid().optional(),
+  branchId: z.uuid().optional(),
+});
+export type PunchListQuery = z.input<typeof PunchListQuerySchema>;
+export const PunchListResponseSchema = z.object({
+  date: z.string(),
+  /** The minutes of work that make one full day for pay. */
+  dutyMinutes: z.number().int(),
+  items: z.array(PunchSchema),
+});
+export type PunchListResponse = z.infer<typeof PunchListResponseSchema>;
+
+const orderOfPunch = (
+  value: { punchedInAt?: string | undefined; punchedOutAt?: string | null | undefined },
+  context: z.RefinementCtx,
+): void => {
+  if (!value.punchedInAt || !value.punchedOutAt) return;
+  const start = new Date(value.punchedInAt);
+  const end = new Date(value.punchedOutAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+  if (end.getTime() <= start.getTime())
+    context.addIssue({
+      code: 'custom',
+      path: ['punchedOutAt'],
+      message: 'The punch out must be after the punch in',
+    });
+  else if (end.getTime() - start.getTime() > MAX_SHIFT_HOURS * 3_600_000)
+    context.addIssue({
+      code: 'custom',
+      path: ['punchedOutAt'],
+      message: `One punch cannot be longer than ${MAX_SHIFT_HOURS} hours`,
+    });
+};
+
+/** A manager adds a punch for someone, with the reason. Leave the punch out empty for a punch that is still open. */
+export const CreatePunchRequestSchema = z
+  .object({
+    staffId: z.uuid('Choose the person'),
+    punchedInAt: InstantSchema,
+    punchedOutAt: InstantSchema.nullable().default(null),
+    reason: ReasonSchema,
+  })
+  .superRefine(orderOfPunch);
+export type CreatePunchRequest = z.input<typeof CreatePunchRequestSchema>;
+
+/** A manager changes the times of a punch, with the reason. `null` for the punch out reopens the punch. */
+export const UpdatePunchRequestSchema = z
+  .object({
+    punchedInAt: InstantSchema.optional(),
+    punchedOutAt: InstantSchema.nullable().optional(),
+    reason: ReasonSchema,
+    rowVersion: z.number().int().min(1),
+  })
+  .refine((value) => value.punchedInAt !== undefined || value.punchedOutAt !== undefined, {
+    message: 'Change the punch in or the punch out',
+  })
+  .superRefine(orderOfPunch);
+export type UpdatePunchRequest = z.input<typeof UpdatePunchRequestSchema>;
+
+export const RemovePunchRequestSchema = z.object({
+  reason: ReasonSchema,
+  rowVersion: z.number().int().min(1),
+});
+export type RemovePunchRequest = z.input<typeof RemovePunchRequestSchema>;
+
 export const AttendanceSchema = z.object({
   id: z.string(),
   staffId: z.string(),
@@ -226,6 +365,8 @@ export const AttendanceSchema = z.object({
   /** Hours between check-in and check-out, once both are there. */
   hoursWorked: z.string().nullable(),
   state: z.enum(['OPEN', 'COMPLETE']),
+  /** The minutes worked in the day, added up over all its punches. */
+  workedMinutes: z.number().int().optional(),
   correctedByName: z.string().nullable(),
   correctionReason: z.string().nullable(),
 });
@@ -248,6 +389,13 @@ export const MyAttendanceSchema = z.object({
   today: z.string(),
   /** Today's record, or one still open from before midnight. */
   current: AttendanceSchema.nullable(),
+  /** Every punch of that day, in order. */
+  punches: z.array(PunchSchema).optional(),
+  /** The minutes worked so far that day, and the minutes that make a full day for pay. */
+  workedMinutesToday: z.number().int().optional(),
+  dutyMinutes: z.number().int().optional(),
+  /** Why today is not a working day for this person (weekly off, holiday, a day off of their own), or null. */
+  offDay: OffDaySchema.nullable().optional(),
 });
 export type MyAttendance = z.infer<typeof MyAttendanceSchema>;
 
@@ -382,6 +530,14 @@ export const PayrollSchema = z.object({
   daysPresent: z.number().int(),
   paidLeaveDays: z.number().int(),
   unpaidLeaveDays: z.number().int(),
+  /** The hours worked in the month and the days they add up to at full duty (a day is paid up to full duty). */
+  hoursWorked: z.string().optional(),
+  creditedDays: z.string().optional(),
+  salaryType: SalaryTypeSchema.optional(),
+  dailyRate: z.string().nullable().optional(),
+  /** The minutes paid for, in whole 30-minute blocks, for someone paid by the day. */
+  paidMinutes: z.number().int().optional(),
+  payBasis: z.enum(['HOURS', 'DAYS']).optional(),
   /** The salary for the days employed. */
   gross: z.string(),
   deductions: z.string(),

@@ -47,3 +47,7 @@ Reports about "today" (stock, dues, battery expiry) ignore the dates and say so.
 - The 20,000-row cap has no automated test (it would need that many rows).
 - No scheduled or emailed reports; no saved report filters.
 - This module also fixes a time-zone bug in the 5.1 lead view (migration 25): leads were dated 5 hours 30 minutes early.
+
+## Sales by category and broker (chunk 11)
+
+`SALES_BY_CATEGORY_BROKER`: for each group (top-level category) and product category, which broker sold how many items, in how many invoices, and for how much before GST, in the period and branch chosen. Items returned on an approved credit note are taken off. Sales with no broker show as "No broker". It needs `reports.view` and `invoices.view`, and can be exported like the other reports.

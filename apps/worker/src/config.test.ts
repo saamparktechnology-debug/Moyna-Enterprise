@@ -37,3 +37,24 @@ describe('outbox settings', () => {
     expect(() => loadWorkerEnv({ ...base, [name]: value })).toThrowError(new RegExp(name));
   });
 });
+
+describe('the mail settings', () => {
+  const base = { WORKER_DATABASE_URL: 'postgresql://erp_worker:x@localhost:5432/erp' };
+
+  it('use Google as the mail server unless told otherwise, and need no user', () => {
+    const env = loadWorkerEnv(base);
+    expect(env.SMTP_HOST).toBe('smtp.gmail.com');
+    expect(env.SMTP_PORT).toBe(465);
+    expect(env.SMTP_USER).toBeUndefined();
+  });
+
+  it('take a user, a password and a sender', () => {
+    const env = loadWorkerEnv({
+      ...base,
+      SMTP_USER: 'shop@gmail.com',
+      SMTP_PASSWORD: 'app-password',
+      SMTP_FROM: 'Shop <shop@gmail.com>',
+    });
+    expect(env).toMatchObject({ SMTP_USER: 'shop@gmail.com', SMTP_FROM: 'Shop <shop@gmail.com>' });
+  });
+});

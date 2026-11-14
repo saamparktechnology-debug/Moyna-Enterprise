@@ -7,6 +7,7 @@ import type {
   InvoiceTypeName,
 } from '@erp/contracts';
 import { isInterState } from './invoice-calc.js';
+import { wordsUpper } from './pdf-kit.js';
 import { invoiceProfit, lineProfit, unitCostFor } from './profit.js';
 import type { ProfitLine, ProfitViewer } from './profit.js';
 
@@ -94,6 +95,9 @@ export function toInvoiceDto(row: InvoiceRow, viewer: ProfitViewer): Invoice {
     customerId: row.customerId,
     customerName: row.customer.name,
     customerGstin: row.customerGstin,
+    totalInWords: wordsUpper(row.total.toFixed(2)),
+    customerPhone: row.customer.phone,
+    customerAddress: row.customer.address,
     branchGstin: row.branchGstin,
     brokerId: row.brokerId,
     brokerName: row.broker?.name ?? null,

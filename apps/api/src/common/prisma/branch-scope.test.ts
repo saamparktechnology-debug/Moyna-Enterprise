@@ -178,7 +178,7 @@ describe('scopeArgs writes', () => {
 });
 
 describe('MODEL_SCOPES', () => {
-  it('covers 42 scoped models', () => {
-    expect(Object.keys(MODEL_SCOPES)).toHaveLength(42);
+  it('covers 53 scoped models', () => {
+    expect(Object.keys(MODEL_SCOPES)).toHaveLength(53);
   });
 });

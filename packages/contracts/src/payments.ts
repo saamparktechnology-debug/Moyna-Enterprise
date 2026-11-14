@@ -205,6 +205,10 @@ export const DueInvoiceSchema = z.object({
   status: DueStatusSchema,
   overdue: z.boolean(),
   overdueDays: z.number().int().min(0),
+  /** The latest date the customer promised to pay, when one was noted. */
+  nextPromisedDate: z.string().nullable().optional(),
+  /** Whether a guarantor is noted for this invoice. */
+  hasGuarantor: z.boolean().optional(),
 });
 export type DueInvoice = z.infer<typeof DueInvoiceSchema>;
 

@@ -50,3 +50,7 @@ The requirements list "state-machine workflow configuration". It is not built. E
 - `audit.view` is held by Staff in the presets, so a branch Staff member can read other people's audit entries for their own branch, including before and after values. Consider making it manager-only.
 - Workflow configuration (above): which transitions, if any, should be configurable?
 - The company details have no consumer yet.
+
+## Company details on printed documents (chunk 6)
+
+Settings, Company now also holds **Proprietor**, **Tagline** and **Invoice terms**. Together with the company name, address, GSTIN and phone they make up the heading and foot of every invoice, credit note and receipt, and the faint name behind the page. A document with none of them set shows the branch name only.

@@ -12,6 +12,8 @@ import { TransfersPage } from '@/features/transfers/transfers-page';
 import { BranchesPage } from '@/features/branches/branches-page';
 import { InvoicesPage } from '@/features/billing/invoices-page';
 import { BrokersPage } from '@/features/brokers/brokers-page';
+import { AssemblyPage } from '@/features/assembly/assembly-page';
+import { MessagesPage } from '@/features/messages/messages-page';
 import { ExchangesPage } from '@/features/exchanges/exchanges-page';
 import { HrPage } from '@/features/hr/hr-page';
 import { LeadsPage } from '@/features/leads/leads-page';
@@ -39,6 +41,8 @@ const IMPLEMENTED_PATHS = new Set([
   '/leads',
   '/brokers',
   '/exchanges',
+  '/assembly',
+  '/messages',
   '/hr',
   '/quotations',
   '/items',
@@ -118,6 +122,22 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePermission permission="quotations.view">
                 <QuotationsPage />
+              </RequirePermission>
+            ),
+          },
+          {
+            path: 'messages',
+            element: (
+              <RequirePermission permission="messages.bulk">
+                <MessagesPage />
+              </RequirePermission>
+            ),
+          },
+          {
+            path: 'assembly',
+            element: (
+              <RequirePermission permission="manufacturing.manage">
+                <AssemblyPage />
               </RequirePermission>
             ),
           },

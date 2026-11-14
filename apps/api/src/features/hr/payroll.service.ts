@@ -26,6 +26,7 @@ import {
   ValidationFailedError,
 } from '../../common/errors/domain-errors.js';
 import { OutboxService } from '../../common/outbox/outbox.service.js';
+import { loadHrSettings, loadOffDays } from './hr-settings.js';
 import { buildPage, toOrderBy, toSkipTake } from '../../common/pagination/pagination.js';
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
@@ -56,6 +57,12 @@ function toDto(row: Row, names: ReadonlyMap<string, string>): Payroll {
     daysPresent: row.daysPresent,
     paidLeaveDays: row.paidLeaveDays,
     unpaidLeaveDays: row.unpaidLeaveDays,
+    hoursWorked: row.hoursWorked.toFixed(2),
+    creditedDays: row.creditedDays.toFixed(2),
+    payBasis: row.payBasis === 'HOURS' ? 'HOURS' : 'DAYS',
+    salaryType: row.salaryType === 'DAILY' ? 'DAILY' : 'FIXED',
+    dailyRate: row.dailyRate?.toFixed(2) ?? null,
+    paidMinutes: row.paidMinutes,
     gross: row.gross.toFixed(2),
     deductions: row.deductions.toFixed(2),
     deductionNote: row.deductionNote,
@@ -166,6 +173,7 @@ export class PayrollService {
           toDate: { gte: parseIsoDate(first) },
         },
       });
+      const hr = await loadHrSettings(tx);
       let created = 0;
       for (const person of fresh) {
         const joined = isoDate(person.joinDate);
@@ -173,15 +181,16 @@ export class PayrollService {
         const employed = employedDays(input.month, joined, left);
         const windowFrom = joined > first ? joined : first;
         const windowTo = left && left < last ? left : last;
+        // Weekly offs, holidays and the person's own days off: leave taken over them is not leave, and a person
+        // paid by the day may be paid for them (a setting).
+        const offDays = await loadOffDays(tx, hr, person, windowFrom, windowTo);
         let paid = 0;
         let unpaid = 0;
         for (const item of leave.filter((l) => l.staffId === person.id)) {
-          const shared = overlapDays(
-            windowFrom,
-            windowTo,
-            isoDate(item.fromDate),
-            isoDate(item.toDate),
-          );
+          const from = isoDate(item.fromDate);
+          const to = isoDate(item.toDate);
+          const onOffDays = [...offDays.keys()].filter((date) => date >= from && date <= to).length;
+          const shared = Math.max(0, overlapDays(windowFrom, windowTo, from, to) - onOffDays);
           if (item.kind === 'UNPAID') unpaid += shared;
           else paid += shared;
         }
@@ -192,9 +201,54 @@ export class PayrollService {
             workDate: { gte: parseIsoDate(first), lte: parseIsoDate(last) },
           },
         });
-        const salary = person.monthlySalary.toFixed(2);
-        const gross = new Decimal(proRata(salary, employed, days));
-        const suggested = Decimal.min(new Decimal(proRata(salary, unpaid, days)), gross);
+        let gross: Prisma.Decimal;
+        let suggested: Prisma.Decimal;
+        let note: string | null;
+        let hoursWorked = new Decimal(0);
+        let creditedDays = new Decimal(0);
+        let paidMinutes = 0;
+        if (person.salaryType === 'DAILY' && person.dailyRate) {
+          // No work, no pay. The daily rate is for a full duty day. Work is counted in whole 30-minute blocks (30 to 59
+          // minutes count as 30, so 59 minutes is paid as 30), and hours beyond full duty are paid at the same rate.
+          const worked = await tx.attendance.findMany({
+            where: {
+              staffId: person.id,
+              checkIn: { not: null },
+              workDate: { gte: parseIsoDate(windowFrom), lte: parseIsoDate(windowTo) },
+            },
+            select: { workDate: true, workedMinutes: true },
+          });
+          const minutes = worked.reduce((sum, row) => sum + row.workedMinutes, 0);
+          paidMinutes = worked.reduce(
+            (sum, row) => sum + Math.floor(row.workedMinutes / 30) * 30,
+            0,
+          );
+          // An off day nobody worked is paid as a full duty day when the owner chose to pay daily staff for off days.
+          const workedDates = new Set(
+            worked.filter((row) => row.workedMinutes > 0).map((row) => isoDate(row.workDate)),
+          );
+          const paidOffDays = hr.payOffDaysDaily
+            ? [...offDays.keys()].filter((date) => !workedDates.has(date)).length
+            : 0;
+          paidMinutes += paidOffDays * hr.dutyMinutes;
+          const ratePaise = Math.round(Number(person.dailyRate) * 100);
+          const earnedPaise = Math.floor(
+            (ratePaise * paidMinutes * 2 + hr.dutyMinutes) / (2 * hr.dutyMinutes),
+          );
+          gross = new Decimal(earnedPaise).div(100);
+          suggested = new Decimal(0);
+          hoursWorked = new Decimal(minutes).div(60).toDecimalPlaces(2);
+          creditedDays = new Decimal(paidMinutes).div(hr.dutyMinutes).toDecimalPlaces(2);
+          note = `Paid by the day at ${person.dailyRate.toFixed(2)} for ${hr.dutyMinutes / 60} hours: ${paidMinutes / 30} half-hours counted${paidOffDays > 0 ? `, including ${paidOffDays} weekly off or holiday ${paidOffDays === 1 ? 'day' : 'days'}` : ''}`;
+        } else {
+          // A fixed salary: the salary for the days employed, less unpaid leave.
+          const salary = person.monthlySalary.toFixed(2);
+          gross = new Decimal(proRata(salary, employed, days));
+          suggested = Decimal.min(new Decimal(proRata(salary, unpaid, days)), gross);
+          note = suggested.gt(0)
+            ? `Unpaid leave: ${unpaid} ${unpaid === 1 ? 'day' : 'days'}`
+            : null;
+        }
         await tx.payrollRecord.create({
           data: {
             branchId,
@@ -208,10 +262,14 @@ export class PayrollService {
             paidLeaveDays: paid,
             unpaidLeaveDays: unpaid,
             gross,
+            hoursWorked,
+            creditedDays,
+            payBasis: person.salaryType === 'DAILY' ? 'HOURS' : 'DAYS',
+            salaryType: person.salaryType === 'DAILY' ? 'DAILY' : 'FIXED',
+            dailyRate: person.dailyRate,
+            paidMinutes,
             deductions: suggested,
-            deductionNote: suggested.gt(0)
-              ? `Unpaid leave: ${unpaid} ${unpaid === 1 ? 'day' : 'days'}`
-              : null,
+            deductionNote: note,
             net: gross.minus(suggested),
             createdBy: auth.userId,
             updatedBy: auth.userId,

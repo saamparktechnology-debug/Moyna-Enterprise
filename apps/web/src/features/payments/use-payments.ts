@@ -2,12 +2,21 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ApplyPaymentRequest,
+  CreateDuePromiseRequest,
   CreateRefundRequest,
   RecordPaymentRequest,
   ReversePaymentRequest,
+  SetGuarantorRequest,
 } from '@erp/contracts';
 import {
+  addPromise,
   applyPayment,
+  getGuarantor,
+  listPromises,
+  removeGuarantor,
+  removeGuarantorKyc,
+  setGuarantor,
+  uploadGuarantorKyc,
   getCustomerCredit,
   getLedger,
   getPayment,
@@ -103,5 +112,43 @@ export function usePaymentMutations() {
         reversePayment(id, values),
       onSuccess: refresh,
     }),
+  };
+}
+
+/** The promises made on an invoice and its guarantor, for the dialog that follows up a due. */
+export function useDueFollowup(invoiceId: string) {
+  return {
+    promises: useQuery({
+      queryKey: [KEY, 'promises', invoiceId],
+      queryFn: () => listPromises(invoiceId),
+    }),
+    guarantor: useQuery({
+      queryKey: [KEY, 'guarantor', invoiceId],
+      queryFn: () => getGuarantor(invoiceId),
+    }),
+  };
+}
+
+export function useDueFollowupMutations(invoiceId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: [KEY] });
+  return {
+    addPromise: useMutation({
+      mutationFn: (values: CreateDuePromiseRequest) => addPromise(invoiceId, values),
+      onSuccess: refresh,
+    }),
+    setGuarantor: useMutation({
+      mutationFn: (values: SetGuarantorRequest) => setGuarantor(invoiceId, values),
+      onSuccess: refresh,
+    }),
+    removeGuarantor: useMutation({
+      mutationFn: () => removeGuarantor(invoiceId),
+      onSuccess: refresh,
+    }),
+    uploadKyc: useMutation({
+      mutationFn: (file: File) => uploadGuarantorKyc(invoiceId, file),
+      onSuccess: refresh,
+    }),
+    removeKyc: useMutation({ mutationFn: () => removeGuarantorKyc(invoiceId), onSuccess: refresh }),
   };
 }

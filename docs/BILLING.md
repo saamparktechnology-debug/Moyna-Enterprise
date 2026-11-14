@@ -116,3 +116,13 @@ Approving a credit note for a vehicle also returns the **batteries fitted in it*
 ## Sale history filters (chunk 3)
 
 The invoice list can be filtered by group (a top-level item category, with everything under it), by product category, and by broker. The filters combine with status, kind, customer, branch and dates. A group or category filter keeps the invoices that sold at least one item from it.
+
+## The printed invoice (chunk 6)
+
+The invoice PDF and the invoice dialog's print view follow the business's own printed invoice: a ruled frame, the company name, proprietor, GSTIN and address at the top, the buyer and a date / invoice number / vehicle number box, a table of Sl, Description, HSN/SAC, Quantity, Rate and Amount, the total in words, the GST rows (C.G.S.T, S.G.S.T or I.G.S.T, one pair per rate), the round off and the total, then the customer's signature and the company's. Amounts use Indian digit grouping. Credit notes and receipts use the same frame and heading. The heading comes from Settings, Company (name, proprietor, tagline, address, GSTIN, phone, invoice terms).
+
+## GST on the bill, HSN and invoice numbers (chunk 7)
+
+- The biller chooses the kind of invoice. On a GST invoice each line carries a GST rate and an HSN code, starting from the item's own and changed on the bill if needed; the rate must be one of the GST rates. A bill without GST charges no tax whatever the item says.
+- To issue a GST invoice to a buyer **with a GSTIN**, every line needs an HSN code (4 to 8 digits). Without a GSTIN it is optional. A draft can be saved without it. A code that is not in the list yet is added to it.
+- An invoice number is the prefix, a dash and the date and time of issue in India time: `ME-111120261123` is 11 November 2026 at 11:23. The prefix is the setting Company > Invoice number prefix (default ME). If two invoices fall in the same minute the second takes the next free minute. These numbers are unique but not consecutive.

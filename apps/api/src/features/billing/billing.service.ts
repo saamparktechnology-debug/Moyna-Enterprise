@@ -24,7 +24,6 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { OutboxService } from '../../common/outbox/outbox.service.js';
 import { BranchContextService } from '../../common/branch-context/branch-context.service.js';
-import { DocumentNumberService } from '../../common/document-number/document-number.service.js';
 import {
   BusinessRuleError,
   ConflictError,
@@ -54,6 +53,8 @@ import { StockPostingService } from '../stock/stock-posting.service.js';
 import { INVOICE_INCLUDE, invoiceSnapshot, toInvoiceDto, toSummaryDto } from './billing.mapper.js';
 import type { InvoiceRow } from './billing.mapper.js';
 import { calculateInvoice, isInterState } from './invoice-calc.js';
+import { loadCompanyProfile, loadInvoicePrefix } from '../settings/company-profile.js';
+import { invoiceNumberAt } from './invoice-number.js';
 import { buildInvoicePdf } from './invoice-pdf.js';
 import type { CalcResult } from './invoice-calc.js';
 
@@ -79,6 +80,8 @@ interface Prepared {
       displayPurchasePrice: Prisma.Decimal | null;
     };
     serialNo: string | null;
+    /** The HSN code and GST rate this line is billed at: what the biller chose, else the item's own. */
+    tax: { hsnCode: string | null; taxRate: Prisma.Decimal | null };
   }[];
   calc: CalcResult;
 }
@@ -92,7 +95,6 @@ export class BillingService {
     @Inject(TransactionService) private readonly transactions: TransactionService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
-    @Inject(DocumentNumberService) private readonly documents: DocumentNumberService,
     @Inject(StockPostingService) private readonly posting: StockPostingService,
     @Inject(BatteriesService) private readonly batteries: BatteriesService,
     @Inject(BranchContextService) private readonly contexts: BranchContextService,
@@ -161,7 +163,11 @@ export class BillingService {
   }
 
   async get(auth: AuthContext, id: string): Promise<Invoice> {
-    return this.transactions.run(async (tx) => toInvoiceDto(await this.load(tx, id), auth));
+    return this.transactions.run(async (tx) => {
+      const row = await this.load(tx, id);
+      // The business's details come with one opened invoice, so the screen can print the same heading as the PDF.
+      return { ...toInvoiceDto(row, auth), company: await loadCompanyProfile(tx, row.branch.name) };
+    });
   }
 
   async preview(body: unknown): Promise<InvoicePreview> {
@@ -182,7 +188,8 @@ export class BillingService {
     return this.transactions.run(async (tx) => {
       const row = await this.load(tx, id);
       const invoice = toInvoiceDto(row, { isSuperAdmin: false });
-      const body = buildInvoicePdf(invoice, row.branch.name);
+      const company = await loadCompanyProfile(tx, row.branch.name);
+      const body = buildInvoicePdf(invoice, company);
       const label = (row.invoiceNo ?? `draft-${row.id.slice(0, 8)}`).replace(
         /[^A-Za-z0-9._-]/g,
         '-',
@@ -221,6 +228,7 @@ export class BillingService {
       const prepared = await this.prepare(tx, current.branchId, input);
       await this.commissions.assertUsable(tx, input.brokerId);
       await this.clearLines(tx, id);
+      await this.saveHsn(tx, auth, prepared);
       await tx.invoiceLine.createMany({
         data: this.lineRows(prepared, id, current.branchId, auth.userId),
       });
@@ -466,17 +474,24 @@ export class BillingService {
       this.assertVersion(current, input.rowVersion);
       this.assertDraft(current, 'issued');
 
-      const prepared = await this.prepare(tx, current.branchId, {
-        customerId: current.customerId,
-        type: current.type as InvoiceTypeName,
-        lines: current.invoiceLines.map((line) => ({
-          itemId: line.itemId,
-          qty: line.qty,
-          unitPrice: money(line.unitPrice),
-          discountAmount: money(line.discountAmount),
-          ...(line.serialUnitId ? { serialUnitId: line.serialUnitId } : {}),
-        })),
-      });
+      const prepared = await this.prepare(
+        tx,
+        current.branchId,
+        {
+          customerId: current.customerId,
+          type: current.type as InvoiceTypeName,
+          lines: current.invoiceLines.map((line) => ({
+            itemId: line.itemId,
+            qty: line.qty,
+            unitPrice: money(line.unitPrice),
+            discountAmount: money(line.discountAmount),
+            ...(line.taxRate === null ? {} : { taxRate: money(line.taxRate) }),
+            ...(line.hsnCode === null ? {} : { hsnCode: line.hsnCode }),
+            ...(line.serialUnitId ? { serialUnitId: line.serialUnitId } : {}),
+          })),
+        },
+        { requireHsn: true },
+      );
       this.assertMayIssue(auth, prepared);
 
       const today = todayInIndia();
@@ -485,11 +500,9 @@ export class BillingService {
           { field: 'dueDate', message: 'The due date cannot be before today' },
         ]);
 
-      const invoiceNo = await this.documents.next(tx, {
-        branchId: current.branchId,
-        docType: prepared.type === 'GST' ? 'INVOICE_GST' : 'INVOICE_NON_GST',
-      });
+      const invoiceNo = await this.nextInvoiceNumber(tx, current.branchId, prepared.type);
       await this.clearLines(tx, id);
+      await this.saveHsn(tx, auth, prepared);
       await tx.invoiceLine.createMany({
         data: this.lineRows(prepared, id, current.branchId, auth.userId),
       });
@@ -844,6 +857,7 @@ export class BillingService {
     tx: TxClient,
     branchId: string,
     input: Pick<BodyInput, 'customerId' | 'type' | 'lines'>,
+    options: { requireHsn?: boolean } = {},
   ): Promise<Prepared> {
     const branch = await tx.branch.findUnique({ where: { id: branchId } });
     if (!branch) throw new NotFoundError('Branch', branchId);
@@ -866,6 +880,12 @@ export class BillingService {
     });
     const unitById = new Map(units.map((unit) => [unit.id, unit]));
 
+    const activeRates = new Set(
+      (await tx.gstRate.findMany({ where: { isActive: true }, select: { rate: true } })).map(
+        (row) => row.rate.toFixed(2),
+      ),
+    );
+
     const lines = input.lines.map((line, index) => {
       const item = byId.get(line.itemId);
       const at = (field: string, message: string) =>
@@ -885,9 +905,26 @@ export class BillingService {
           at('serialUnitId', 'This serial number is not in stock in this branch');
         else serialNo = unit.serialNo;
       }
-      if (input.type === 'GST' && item.taxRate === null)
-        at('itemId', `${item.itemCode} has no GST rate`);
-      return { input: line, item, serialNo };
+      // The type of the invoice decides whether GST is charged, not the product. The biller picks the rate and the
+      // HSN code on the line; the item's own are only the starting point.
+      const taxRate =
+        line.taxRate === undefined
+          ? item.taxRate
+          : line.taxRate === null
+            ? null
+            : new Prisma.Decimal(line.taxRate);
+      const hsnCode = line.hsnCode === undefined ? item.hsnCode : line.hsnCode;
+      if (input.type === 'GST') {
+        if (taxRate === null) at('taxRate', `Choose the GST rate for ${item.itemCode}`);
+        else if (!activeRates.has(taxRate.toFixed(2)))
+          at('taxRate', 'Choose a GST rate from the list');
+        if (options.requireHsn && customer.gstin && !hsnCode)
+          at(
+            'hsnCode',
+            `Enter the HSN code for ${item.itemCode}: a buyer with a GSTIN needs it on the invoice`,
+          );
+      }
+      return { input: line, item, serialNo, tax: { hsnCode, taxRate } };
     });
     if (problems.length > 0) throw new ValidationFailedError('The invoice has problems', problems);
 
@@ -899,7 +936,7 @@ export class BillingService {
         qty: line.input.qty,
         unitPrice: line.input.unitPrice,
         discountAmount: line.input.discountAmount ?? '0',
-        taxRate: line.item.taxRate,
+        taxRate: line.tax.taxRate,
       })),
       { type: input.type, interState },
     );
@@ -923,6 +960,7 @@ export class BillingService {
         input: line.input,
         item: line.item,
         serialNo: line.serialNo,
+        tax: line.tax,
       })),
       calc,
     };
@@ -972,6 +1010,54 @@ export class BillingService {
     };
   }
 
+  /** An HSN code the biller typed that is not in the list yet is added to it, so the invoice line can refer to it. */
+  private async saveHsn(tx: TxClient, auth: AuthContext, prepared: Prepared): Promise<void> {
+    if (prepared.type !== 'GST') return;
+    const seen = new Set<string>();
+    for (const line of prepared.lines) {
+      const code = line.tax.hsnCode;
+      if (!code || seen.has(code)) continue;
+      seen.add(code);
+      await tx.hsnCode.createMany({
+        data: [
+          {
+            code,
+            description: 'Added on an invoice',
+            gstRate: line.tax.taxRate?.toFixed(2) ?? null,
+            createdBy: auth.userId,
+            updatedBy: auth.userId,
+          },
+        ],
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  /**
+   * The number for an invoice being issued: the prefix, a dash and the day, month, year, hour and minute in India time
+   * (ME-111120261123). Issuing in one branch and series is made to take turns, so two invoices cannot take the same
+   * number; if the minute is already used, the next free minute is taken.
+   */
+  private async nextInvoiceNumber(
+    tx: TxClient,
+    branchId: string,
+    type: InvoiceTypeName,
+  ): Promise<string> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`invoice-number:${branchId}:${type}`}))`;
+    const prefix = await loadInvoicePrefix(tx);
+    let when = new Date();
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      const invoiceNo = invoiceNumberAt(prefix, when);
+      const taken = await tx.invoice.findFirst({
+        where: { branchId, type, invoiceNo },
+        select: { id: true },
+      });
+      if (!taken) return invoiceNo;
+      when = new Date(when.getTime() + 60_000);
+    }
+    throw new ConflictError('Could not find a free invoice number. Try again in a moment');
+  }
+
   private lineRows(
     prepared: Prepared,
     invoiceId: string,
@@ -989,8 +1075,8 @@ export class BillingService {
         itemId: line.item.id,
         serialUnitId: line.input.serialUnitId ?? null,
         qty: line.input.qty,
-        hsnCode: gst ? line.item.hsnCode : null,
-        taxRate: gst ? line.item.taxRate : null,
+        hsnCode: gst ? line.tax.hsnCode : null,
+        taxRate: gst ? line.tax.taxRate : null,
         unitPrice: line.input.unitPrice,
         discountAmount: calc.discount,
         taxableAmount: calc.taxable,
@@ -1017,8 +1103,8 @@ export class BillingService {
         itemCode: line.item.itemCode,
         itemName: line.item.name,
         unitCode: line.item.unitCode,
-        hsnCode: gst ? line.item.hsnCode : null,
-        taxRate: gst && line.item.taxRate ? money(line.item.taxRate) : null,
+        hsnCode: gst ? line.tax.hsnCode : null,
+        taxRate: gst && line.tax.taxRate ? money(line.tax.taxRate) : null,
         qty: line.input.qty,
         unitPrice: money(new Prisma.Decimal(line.input.unitPrice)),
         discountAmount: money(calc.discount),
@@ -1059,6 +1145,7 @@ export class BillingService {
         updatedBy: auth.userId,
       },
     });
+    await this.saveHsn(tx, auth, prepared);
     await tx.invoiceLine.createMany({
       data: this.lineRows(prepared, created.id, branchId, auth.userId),
     });

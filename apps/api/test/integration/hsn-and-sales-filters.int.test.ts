@@ -1,6 +1,14 @@
 //apps/api/test/integration/hsn-and-sales-filters.int.test.ts
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { InvoiceListResponseSchema, InvoiceSchema, ItemSchema } from '@erp/contracts';
+import {
+  InvoiceListResponseSchema,
+  InvoiceSchema,
+  ItemSchema,
+  ManagedHsnListResponseSchema,
+  ManagedHsnSchema,
+  ReportResponseSchema,
+  todayInIndia,
+} from '@erp/contracts';
 import type { Invoice } from '@erp/contracts';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createAuthWorld, loggedIn } from '../support/auth-world.js';
@@ -208,9 +216,177 @@ describe('HSN codes and the sale history filters', () => {
       expect(mine(await ids(`categoryId=${otherGroup}&groupId=${group}`))).toEqual([]);
     });
 
+    it('reports, for each group and category, which broker sold how many items', async () => {
+      const names = new Map(
+        (
+          await owner.itemCategory.findMany({
+            where: { id: { in: [group, otherGroup, categoryOne, categoryTwo] } },
+          })
+        ).map((row) => [row.id, row.name]),
+      );
+      const brokerName = (await owner.broker.findUniqueOrThrow({ where: { id: brokerOne } })).name;
+      const day = todayInIndia();
+      const response = await superAdmin.get(
+        `/reports/SALES_BY_CATEGORY_BROKER?from=${day}&to=${day}&pageSize=200`,
+      );
+      expect(response.status, JSON.stringify(response.body).slice(0, 300)).toBe(200);
+      const report = ReportResponseSchema.parse(response.body);
+      const mineRows = report.rows.filter((row) =>
+        [names.get(group), names.get(otherGroup)].includes(String(row['group'])),
+      );
+      const pick = (category: string | undefined, broker: string) =>
+        mineRows.find((row) => row['category'] === category && row['broker'] === broker);
+      expect(pick(names.get(categoryOne), brokerName)).toMatchObject({
+        group: names.get(group),
+        units: 1,
+        invoices: 1,
+      });
+      expect(pick(names.get(categoryTwo), 'No broker')).toMatchObject({ units: 1 });
+      // a group with no sub-category of its own is its own category
+      expect(pick(names.get(otherGroup), 'No broker')).toMatchObject({
+        group: names.get(otherGroup),
+        units: 1,
+      });
+      expect(Number(pick(names.get(categoryOne), brokerName)?.['taxable'])).toBe(100);
+    });
+
+    it('takes the items of an approved credit note off the report', async () => {
+      const returnedCategory = (
+        await owner.itemCategory.create({ data: { name: unique('Cat '), parentId: group } })
+      ).id;
+      const sold = await sell(await itemIn(returnedCategory), brokerOne);
+      const line = sold.lines[0];
+      const noteResponse = await staffA.post('/credit-notes', {
+        invoiceId: sold.id,
+        reason: 'Returned',
+        lines: [{ invoiceLineId: line?.id, qty: 1 }],
+      });
+      expect(noteResponse.status, JSON.stringify(noteResponse.body)).toBe(201);
+      const note = noteResponse.body as { id: string; rowVersion: number };
+      const approved = await superAdmin.post(`/credit-notes/${note.id}/approve`, {
+        rowVersion: note.rowVersion,
+      });
+      expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+      const day = todayInIndia();
+      const report = ReportResponseSchema.parse(
+        (
+          await superAdmin.get(
+            `/reports/SALES_BY_CATEGORY_BROKER?from=${day}&to=${day}&pageSize=200`,
+          )
+        ).body,
+      );
+      const name = (await owner.itemCategory.findUniqueOrThrow({ where: { id: returnedCategory } }))
+        .name;
+      const row = report.rows.find((entry) => entry['category'] === name);
+      expect(row).toMatchObject({ units: 0 });
+    });
+
+    it('is only for those who may view reports and invoices', async () => {
+      const day = todayInIndia();
+      expect(
+        (await staffA.get(`/reports/SALES_BY_CATEGORY_BROKER?from=${day}&to=${day}`)).status,
+      ).toBe(403);
+    });
+
     it('refuses a filter that is not an id', async () => {
       expect((await staffA.get('/invoices?categoryId=abc')).status).toBe(400);
       expect((await staffA.get('/invoices?brokerId=abc')).status).toBe(400);
+    });
+  });
+
+  describe('managing the HSN list', () => {
+    const add = (client: TestClient, body: Record<string, unknown>) =>
+      client.post('/hsn-codes', body);
+    const addOk = async (body: Record<string, unknown>) => {
+      const response = await add(adminA, body);
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+      return ManagedHsnSchema.parse(response.body);
+    };
+
+    it('adds a code with its description and GST rate, and lists it with how many items use it', async () => {
+      const code = newCode();
+      const added = await addOk({ code, description: 'Electric rickshaw parts', gstRate: '18' });
+      expect(added).toMatchObject({ code, gstRate: '18.00', isActive: true, usedBy: 0 });
+      expect((await makeItem({ hsnCode: code })).status).toBe(201);
+      const found = ManagedHsnListResponseSchema.parse(
+        (await adminA.get(`/hsn-codes?search=${code}`)).body,
+      );
+      expect(found.items.map((row) => [row.code, row.usedBy])).toEqual([[code, 1]]);
+    });
+
+    it('finds a code by the start of its number or a word of its description, and by status', async () => {
+      const code = newCode();
+      await addOk({ code, description: 'Zebra stripe fittings' });
+      const byWord = ManagedHsnListResponseSchema.parse(
+        (await adminA.get('/hsn-codes?search=zebra')).body,
+      );
+      expect(byWord.items.some((row) => row.code === code)).toBe(true);
+      const off = ManagedHsnSchema.parse(
+        (await adminA.patch(`/hsn-codes/${code}`, { isActive: false, rowVersion: 1 })).body,
+      );
+      expect(off.isActive).toBe(false);
+      const inactive = ManagedHsnListResponseSchema.parse(
+        (await adminA.get('/hsn-codes?status=inactive&search=zebra')).body,
+      );
+      expect(inactive.items.map((row) => row.code)).toContain(code);
+      const active = ManagedHsnListResponseSchema.parse(
+        (await adminA.get('/hsn-codes?status=active&search=zebra')).body,
+      );
+      expect(active.items.map((row) => row.code)).not.toContain(code);
+    });
+
+    it('changes the description and the rate with the version that was read, and refuses a stale one', async () => {
+      const code = newCode();
+      const added = await addOk({ code, description: 'First wording' });
+      const changed = await adminA.patch(`/hsn-codes/${code}`, {
+        description: 'Better wording',
+        gstRate: '5',
+        rowVersion: added.rowVersion,
+      });
+      expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+      expect(ManagedHsnSchema.parse(changed.body)).toMatchObject({
+        description: 'Better wording',
+        gstRate: '5.00',
+      });
+      const stale = await adminA.patch(`/hsn-codes/${code}`, {
+        description: 'Third wording',
+        rowVersion: added.rowVersion,
+      });
+      expect(stale.status).toBe(409);
+      expect((await adminA.patch(`/hsn-codes/${code}`, { rowVersion: 2 })).status).toBe(400);
+      expect(
+        (await adminA.patch('/hsn-codes/99990000', { description: 'x y', rowVersion: 1 })).status,
+      ).toBe(404);
+    });
+
+    it('refuses a code that is already there, one that is not 4 to 8 digits, and a rate that is not a GST rate', async () => {
+      const code = newCode();
+      await addOk({ code, description: 'Once only' });
+      expect((await add(adminA, { code, description: 'Again' })).status).toBe(409);
+      for (const bad of ['12', '123456789', 'AB12']) {
+        expect((await add(adminA, { code: bad, description: 'Nope' })).status, bad).toBe(400);
+      }
+      expect(
+        (await add(adminA, { code: newCode(), description: 'Odd rate', gstRate: '7' })).status,
+      ).toBe(400);
+      expect((await add(adminA, { code: newCode(), description: '' })).status).toBe(400);
+    });
+
+    it('keeps a switched-off code on the items that have it, but offers it to no new item', async () => {
+      const code = newCode();
+      const added = await addOk({ code, description: 'Soon off' });
+      const item = ItemSchema.parse((await makeItem({ hsnCode: code })).body);
+      await adminA.patch(`/hsn-codes/${code}`, { isActive: false, rowVersion: added.rowVersion });
+      expect(ItemSchema.parse((await superAdmin.get(`/items/${item.id}`)).body).hsnCode).toBe(code);
+      expect((await makeItem({ hsnCode: code })).status).toBe(400);
+    });
+
+    it('can be read by anyone who may view items, and changed only by those who may manage them', async () => {
+      expect((await staffA.get('/hsn-codes')).status).toBe(200);
+      expect((await add(staffA, { code: newCode(), description: 'Staff try' })).status).toBe(403);
+      expect(
+        (await staffA.patch('/hsn-codes/8703', { description: 'Staff try', rowVersion: 1 })).status,
+      ).toBe(403);
     });
   });
 });

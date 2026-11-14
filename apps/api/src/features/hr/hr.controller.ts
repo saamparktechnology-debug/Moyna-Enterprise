@@ -13,6 +13,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { PunchListResponseSchema, PunchSchema } from '@erp/contracts';
+import type { Punch, PunchListResponse } from '@erp/contracts';
 import {
   AttendanceListResponseSchema,
   AttendanceSchema,
@@ -184,6 +186,47 @@ export class AttendanceController {
   @ApiOkResponse({ schema: toOpenApiSchema(AttendanceSchema) })
   correct(@CurrentAuth() auth: AuthContext, @Body() body: unknown): Promise<Attendance> {
     return this.attendance.correct(auth, body);
+  }
+
+  /** The punches of one day: everyone's for a manager, one's own for anyone else. */
+  @RequirePermission('hr.view')
+  @Get('punches')
+  @ApiOkResponse({ schema: toOpenApiSchema(PunchListResponseSchema) })
+  punches(
+    @CurrentAuth() auth: AuthContext,
+    @Query() query: Record<string, unknown>,
+  ): Promise<PunchListResponse> {
+    return this.attendance.listPunches(auth, query);
+  }
+
+  /** Adds a punch for someone. Only for those allowed to edit punch times. */
+  @RequirePermission('attendance.edit_punches')
+  @Post('punches')
+  @ApiCreatedResponse({ schema: toOpenApiSchema(PunchSchema) })
+  addPunch(@CurrentAuth() auth: AuthContext, @Body() body: unknown): Promise<Punch> {
+    return this.attendance.createPunch(auth, body);
+  }
+
+  @RequirePermission('attendance.edit_punches')
+  @Patch('punches/:id')
+  @ApiOkResponse({ schema: toOpenApiSchema(PunchSchema) })
+  editPunch(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: unknown,
+  ): Promise<Punch> {
+    return this.attendance.updatePunch(auth, id, body);
+  }
+
+  @RequirePermission('attendance.edit_punches')
+  @Post('punches/:id/remove')
+  @HttpCode(204)
+  async removePunch(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: unknown,
+  ): Promise<void> {
+    await this.attendance.removePunch(auth, id, body);
   }
 }
 

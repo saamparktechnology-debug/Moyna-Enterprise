@@ -178,3 +178,15 @@ New tables: `states`, `gst_rates`, `hsn_codes`, `units_of_measure`, `payment_mod
 ## Seeded reference data
 
 `pnpm db:seed` is idempotent and never overwrites changes people have made. It creates: Indian GST states and union territories, GST rates (0, 5, 18 and 40%), sample HSN codes (confirm every rate with your accountant, especially `8504` chargers where sources disagree), units, payment modes, lead sources, KYC document types, departments, the item category tree, every permission, the three system roles with their presets, the default branch, the first Super Admin from the `SEED_*` variables (password stored as Argon2id) and one number series per document type for the current financial year. Re-running adds only what is missing; a new financial year gets its own series.
+
+## Tables added in chunks 14 to 17 (this file is otherwise not kept up to date; the migrations are the truth)
+
+| Table                | Scope  | Migration                                  | Purpose                                                                                           |
+| -------------------- | ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `message_opt_outs`   | none   | `20261007003600_messaging_optout_templates` | Customers who asked not to get bulk messages (one row per customer).                              |
+| `holidays`           | none   | `20261007003700_holidays_and_roster`        | Company holidays by date, set by Super Admin.                                                     |
+| `staff_days_off`     | branch | `20261007003700_holidays_and_roster`        | A single person's own day off in the roster.                                                      |
+| `due_promises`       | branch | `20261007003800_due_promises_guarantors`    | Append-only dates a customer promised to pay an invoice.                                          |
+| `invoice_guarantors` | branch | `20261007003800_due_promises_guarantors`    | One guarantor per invoice, with an optional KYC file.                                             |
+
+Columns added: `message_campaigns.template_key`, `staff.weekly_off_days`.

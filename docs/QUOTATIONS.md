@@ -66,3 +66,7 @@ New columns on `quotations` (type, validity, tax totals, place of supply, broker
 - A quotation has no PDF yet, and no link to the lead it came from.
 - Advances appear in the payments list as ordinary payments; the payments screens do not yet show which quotation they are for.
 - There is no way to unassign a vehicle (it can be replaced with another).
+
+## The receipt for an advance (chunk 6)
+
+Every advance has a receipt number and a printable PDF: **View receipt** beside the advance (and automatically when the advance is taken). It shows the quotation, the quoted total, the advances held and the balance still to pay. It is a receipt, not a tax invoice; the tax invoice is issued on delivery and the advances are applied to it. A reversed advance's receipt says it was reversed.

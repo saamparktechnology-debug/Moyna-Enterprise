@@ -39,6 +39,7 @@ enum SerialUnitState {
   QUARANTINE
   SOLD
   SCRAPPED
+  INSTALLED
 }
 
 enum MovementType {
@@ -55,6 +56,10 @@ enum MovementType {
   EXCHANGE_IN
   EXCHANGE_OUT
   WRITE_OFF
+  ASSEMBLY_USED
+  ASSEMBLY_MADE
+  ASSEMBLY_RETURNED
+  ASSEMBLY_UNMADE
 }
 
 enum StockAdjustmentKind {
@@ -229,6 +234,7 @@ model User {
   decidedExchanges Exchange[] @relation("Exchange_decider")
   decidedLeave LeaveRequest[] @relation("LeaveRequest_decider")
   correctedAttendance Attendance[] @relation("Attendance_corrector")
+  editedPunches AttendancePunch[] @relation("AttendancePunch_editor")
   finalizedPayroll PayrollRecord[] @relation("PayrollRecord_finalizer")
   staff Staff? @relation("Staff_user")
   auditLogs AuditLog[] @relation("AuditLog_actor")
@@ -258,6 +264,16 @@ model Branch {
   state State @relation("Branch_state", fields: [stateCode], references: [code])
   userBranches UserBranch[] @relation("UserBranch_branch")
   serialUnits SerialUnit[] @relation("SerialUnit_branch")
+  assemblies Assembly[] @relation("Assembly_branch")
+  assemblyParts AssemblyPart[] @relation("AssemblyPart_branch")
+  assemblyUnits AssemblyUnit[] @relation("AssemblyUnit_branch")
+  assemblyReversals AssemblyReversal[] @relation("AssemblyReversal_branch")
+  staffAgreements StaffAgreement[] @relation("StaffAgreement_branch")
+  messageCampaigns MessageCampaign[] @relation("MessageCampaign_branch")
+  staffDaysOff StaffDayOff[] @relation("StaffDayOff_branch")
+  duePromises DuePromise[] @relation("DuePromise_branch")
+  invoiceGuarantors InvoiceGuarantor[] @relation("InvoiceGuarantor_branch")
+  messageDeliveries MessageDelivery[] @relation("MessageDelivery_branch")
   stockLedgers StockLedger[] @relation("StockLedger_branch")
   stockBalances StockBalance[] @relation("StockBalance_branch")
   stockAdjustments StockAdjustment[] @relation("StockAdjustment_branch")
@@ -294,6 +310,7 @@ model Branch {
   customerRefunds CustomerRefund[] @relation("CustomerRefund_branch")
   staffs Staff[] @relation("Staff_branch")
   attendances Attendance[] @relation("Attendance_branch")
+  attendancePunches AttendancePunch[] @relation("AttendancePunch_branch")
   leaveRequests LeaveRequest[] @relation("LeaveRequest_branch")
   payrollRecords PayrollRecord[] @relation("PayrollRecord_branch")
   auditLogs AuditLog[] @relation("AuditLog_branch")
@@ -414,6 +431,7 @@ model Item {
   isSerialized Boolean @default(false) @map("is_serialized")
   isActive Boolean @default(true) @map("is_active")
   actualPurchasePrice Decimal? @map("actual_purchase_price") @db.Decimal(14, 2)
+  sellingPrice Decimal? @map("selling_price") @db.Decimal(14, 2)
   displayPurchasePrice Decimal? @map("display_purchase_price") @db.Decimal(14, 2)
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
@@ -426,6 +444,8 @@ model Item {
   unit UnitOfMeasure @relation("Item_unit", fields: [unitCode], references: [code])
   itemBarcodes ItemBarcode[] @relation("ItemBarcode_item")
   serialUnits SerialUnit[] @relation("SerialUnit_item")
+  assembliesMade Assembly[] @relation("Assembly_finishedItem")
+  assemblyParts AssemblyPart[] @relation("AssemblyPart_item")
   stockLedgers StockLedger[] @relation("StockLedger_item")
   stockBalances StockBalance[] @relation("StockBalance_item")
   stockAdjustments StockAdjustment[] @relation("StockAdjustment_item")
@@ -479,6 +499,8 @@ model SerialUnit {
   purchaseReturnLines PurchaseReturnLine[] @relation("PurchaseReturnLine_serialUnit")
   transferLines TransferLine[] @relation("TransferLine_serialUnit")
   invoiceLines InvoiceLine[] @relation("InvoiceLine_serialUnit")
+  assemblyParts AssemblyPart[] @relation("AssemblyPart_serialUnit")
+  assemblyUnits AssemblyUnit[] @relation("AssemblyUnit_serialUnit")
   exchanges Exchange[] @relation("Exchange_oldSerialUnit")
   exchangesNewSerialUnit Exchange[] @relation("Exchange_newSerialUnit")
   creditNoteLines CreditNoteLine[] @relation("CreditNoteLine_serialUnit")
@@ -844,6 +866,8 @@ model Customer {
   @@index([phone])
   @@index([stateCode])
   @@map("customers")
+  messageDeliveries MessageDelivery[] @relation("MessageDelivery_customer")
+  messageOptOut MessageOptOut? @relation("MessageOptOut_customer")
 }
 
 model Broker {
@@ -1211,6 +1235,8 @@ model Invoice {
   originalExchanges Exchange[] @relation("Exchange_originalInvoice")
   creditNotes CreditNote[] @relation("CreditNote_invoice")
   paymentAllocations PaymentAllocation[] @relation("PaymentAllocation_invoice")
+  duePromises DuePromise[] @relation("DuePromise_invoice")
+  guarantor InvoiceGuarantor? @relation("InvoiceGuarantor_invoice")
   @@unique([branchId, type, invoiceNo])
   @@index([branchId, createdAt])
   @@index([branchId, status])
@@ -1453,6 +1479,9 @@ model Staff {
   employeeCode String @unique @map("employee_code")
   designation String? @map("designation")
   monthlySalary Decimal @map("monthly_salary") @db.Decimal(14, 2)
+  salaryType String @default("FIXED") @map("salary_type")
+  dailyRate Decimal? @map("daily_rate") @db.Decimal(14, 2)
+  weeklyOffDays String? @map("weekly_off_days")
   leftOn DateTime? @map("left_on") @db.Date
   createdBy String? @map("created_by") @db.Uuid
   updatedBy String? @map("updated_by") @db.Uuid
@@ -1463,6 +1492,9 @@ model Staff {
   user User @relation("Staff_user", fields: [userId], references: [id])
   departmentRef Department? @relation("Staff_departmentRef", fields: [department], references: [code])
   attendances Attendance[] @relation("Attendance_staff")
+  punches AttendancePunch[] @relation("AttendancePunch_staff")
+  agreements StaffAgreement[] @relation("StaffAgreement_staff")
+  daysOff StaffDayOff[] @relation("StaffDayOff_staff")
   leaveRequests LeaveRequest[] @relation("LeaveRequest_staff")
   payrollRecords PayrollRecord[] @relation("PayrollRecord_staff")
   @@index([branchId])
@@ -1477,6 +1509,7 @@ model Attendance {
   workDate DateTime @map("work_date") @db.Date
   checkIn DateTime? @map("check_in")
   checkOut DateTime? @map("check_out")
+  workedMinutes Int @default(0) @map("worked_minutes")
   correctedBy String? @map("corrected_by") @db.Uuid
   correctionReason String? @map("correction_reason")
   createdBy String? @map("created_by") @db.Uuid
@@ -1492,6 +1525,298 @@ model Attendance {
   @@index([correctedBy])
   @@index([workDate])
   @@map("attendance")
+}
+
+model Assembly {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  assemblyNo String @map("assembly_no")
+  finishedItemId String @map("finished_item_id") @db.Uuid
+  qty Int @map("qty")
+  sellingPrice Decimal @map("selling_price") @db.Decimal(14, 2)
+  costActual Decimal? @map("cost_actual") @db.Decimal(14, 2)
+  costDisplay Decimal? @map("cost_display") @db.Decimal(14, 2)
+  previousSellingPrice Decimal? @map("previous_selling_price") @db.Decimal(14, 2)
+  note String? @map("note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("Assembly_branch", fields: [branchId], references: [id])
+  finishedItem Item @relation("Assembly_finishedItem", fields: [finishedItemId], references: [id])
+  parts AssemblyPart[] @relation("AssemblyPart_assembly")
+  units AssemblyUnit[] @relation("AssemblyUnit_assembly")
+  reversal AssemblyReversal? @relation("AssemblyReversal_assembly")
+  @@unique([branchId, assemblyNo])
+  @@index([finishedItemId])
+  @@index([createdAt])
+  @@map("assemblies")
+}
+
+model AssemblyPart {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  assemblyId String @map("assembly_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  qty Int @map("qty")
+  serialUnitId String? @unique @map("serial_unit_id") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("AssemblyPart_branch", fields: [branchId], references: [id])
+  assembly Assembly @relation("AssemblyPart_assembly", fields: [assemblyId], references: [id])
+  item Item @relation("AssemblyPart_item", fields: [itemId], references: [id])
+  serialUnit SerialUnit? @relation("AssemblyPart_serialUnit", fields: [serialUnitId], references: [id])
+  @@index([assemblyId])
+  @@index([itemId])
+  @@map("assembly_parts")
+}
+
+model AssemblyReversal {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  assemblyId String @unique @map("assembly_id") @db.Uuid
+  reason String @map("reason")
+  reversedBy String? @map("reversed_by") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("AssemblyReversal_branch", fields: [branchId], references: [id])
+  assembly Assembly @relation("AssemblyReversal_assembly", fields: [assemblyId], references: [id])
+  @@map("assembly_reversals")
+}
+
+model AssemblyUnit {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  assemblyId String @map("assembly_id") @db.Uuid
+  serialUnitId String @unique @map("serial_unit_id") @db.Uuid
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("AssemblyUnit_branch", fields: [branchId], references: [id])
+  assembly Assembly @relation("AssemblyUnit_assembly", fields: [assemblyId], references: [id])
+  serialUnit SerialUnit @relation("AssemblyUnit_serialUnit", fields: [serialUnitId], references: [id])
+  @@index([assemblyId])
+  @@map("assembly_units")
+}
+
+model MessageCampaign {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  kind String @map("kind")
+  channel String @map("channel")
+  subject String? @map("subject")
+  body String @map("body")
+  audience String @map("audience")
+  templateKey String @default("GENERAL") @map("template_key")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("MessageCampaign_branch", fields: [branchId], references: [id])
+  deliveries MessageDelivery[] @relation("MessageDelivery_campaign")
+  @@index([branchId, createdAt])
+  @@map("message_campaigns")
+}
+
+model MessageDelivery {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  campaignId String @map("campaign_id") @db.Uuid
+  customerId String? @map("customer_id") @db.Uuid
+  recipientName String @map("recipient_name")
+  toAddress String @map("to_address")
+  text String @map("text")
+  documentKind String? @map("document_kind")
+  documentId String? @map("document_id") @db.Uuid
+  status String @default("PENDING") @map("status")
+  via String? @map("via")
+  providerMessageId String? @map("provider_message_id")
+  error String? @map("error")
+  attempts Int @default(0) @map("attempts")
+  sentAt DateTime? @map("sent_at")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("MessageDelivery_branch", fields: [branchId], references: [id])
+  campaign MessageCampaign @relation("MessageDelivery_campaign", fields: [campaignId], references: [id])
+  customer Customer? @relation("MessageDelivery_customer", fields: [customerId], references: [id])
+  @@index([campaignId, status])
+  @@index([customerId])
+  @@index([documentKind, documentId])
+  @@map("message_deliveries")
+}
+
+model Holiday {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  holidayDate DateTime @map("holiday_date") @db.Date
+  name String @map("name")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  @@unique([holidayDate])
+  @@map("holidays")
+}
+
+model StaffDayOff {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  staffId String @map("staff_id") @db.Uuid
+  offDate DateTime @map("off_date") @db.Date
+  name String? @map("name")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("StaffDayOff_branch", fields: [branchId], references: [id])
+  staff Staff @relation("StaffDayOff_staff", fields: [staffId], references: [id])
+  @@unique([staffId, offDate])
+  @@index([branchId])
+  @@map("staff_days_off")
+}
+
+model DuePromise {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  promisedDate DateTime @map("promised_date") @db.Date
+  note String? @map("note")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("DuePromise_branch", fields: [branchId], references: [id])
+  invoice Invoice @relation("DuePromise_invoice", fields: [invoiceId], references: [id])
+  @@index([invoiceId, createdAt])
+  @@index([branchId])
+  @@map("due_promises")
+}
+
+model InvoiceGuarantor {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  name String @map("name")
+  phone String @map("phone")
+  address String? @map("address")
+  relation String? @map("relation")
+  kycObjectKey String? @map("kyc_object_key")
+  kycFileName String? @map("kyc_file_name")
+  kycMimeType String? @map("kyc_mime_type")
+  kycSizeBytes Int? @map("kyc_size_bytes")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("InvoiceGuarantor_branch", fields: [branchId], references: [id])
+  invoice Invoice @relation("InvoiceGuarantor_invoice", fields: [invoiceId], references: [id])
+  @@unique([invoiceId])
+  @@unique([kycObjectKey])
+  @@index([branchId])
+  @@map("invoice_guarantors")
+}
+
+model MessageOptOut {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  reason String? @map("reason")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  customer Customer @relation("MessageOptOut_customer", fields: [customerId], references: [id], onDelete: Cascade)
+  @@unique([customerId])
+  @@map("message_opt_outs")
+}
+
+model AgreementTemplate {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  name String @map("name")
+  body String @map("body")
+  isActive Boolean @default(true) @map("is_active")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  agreements StaffAgreement[] @relation("StaffAgreement_template")
+  @@map("agreement_templates")
+}
+
+model StaffAgreement {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  staffId String @map("staff_id") @db.Uuid
+  templateId String? @map("template_id") @db.Uuid
+  agreementNo String @map("agreement_no")
+  title String @map("title")
+  body String @map("body")
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  status String @default("DRAFT") @map("status")
+  renderedBody String? @map("rendered_body")
+  signedOn DateTime? @map("signed_on") @db.Date
+  signedObjectKey String? @unique @map("signed_object_key")
+  signedFileName String? @map("signed_file_name")
+  signedMimeType String? @map("signed_mime_type")
+  signedSizeBytes Int? @map("signed_size_bytes")
+  employeeSigned Boolean @default(false) @map("employee_signed")
+  adminSigned Boolean @default(false) @map("admin_signed")
+  recordedBy String? @map("recorded_by") @db.Uuid
+  endedOn DateTime? @map("ended_on") @db.Date
+  endReason String? @map("end_reason")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("StaffAgreement_branch", fields: [branchId], references: [id])
+  staff Staff @relation("StaffAgreement_staff", fields: [staffId], references: [id])
+  template AgreementTemplate? @relation("StaffAgreement_template", fields: [templateId], references: [id])
+  @@unique([branchId, agreementNo])
+  @@index([staffId])
+  @@index([templateId])
+  @@map("staff_agreements")
+}
+
+model AttendancePunch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @map("id") @db.Uuid
+  branchId String @map("branch_id") @db.Uuid
+  staffId String @map("staff_id") @db.Uuid
+  workDate DateTime @map("work_date") @db.Date
+  punchedInAt DateTime @map("punched_in_at")
+  punchedOutAt DateTime? @map("punched_out_at")
+  source String @default("SELF") @map("source")
+  editedBy String? @map("edited_by") @db.Uuid
+  editReason String? @map("edit_reason")
+  createdBy String? @map("created_by") @db.Uuid
+  updatedBy String? @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  rowVersion Int @default(1) @map("row_version")
+  branch Branch @relation("AttendancePunch_branch", fields: [branchId], references: [id])
+  staff Staff @relation("AttendancePunch_staff", fields: [staffId], references: [id])
+  editor User? @relation("AttendancePunch_editor", fields: [editedBy], references: [id])
+  @@index([staffId, workDate])
+  @@index([branchId])
+  @@index([editedBy])
+  @@map("attendance_punches")
 }
 
 model LeaveRequest {
@@ -1537,6 +1862,12 @@ model PayrollRecord {
   daysPresent Int @map("days_present")
   paidLeaveDays Int @map("paid_leave_days")
   unpaidLeaveDays Int @map("unpaid_leave_days")
+  hoursWorked Decimal @default(0) @map("hours_worked") @db.Decimal(8, 2)
+  creditedDays Decimal @default(0) @map("credited_days") @db.Decimal(6, 2)
+  payBasis String @default("DAYS") @map("pay_basis")
+  salaryType String @default("FIXED") @map("salary_type")
+  dailyRate Decimal? @map("daily_rate") @db.Decimal(14, 2)
+  paidMinutes Int @default(0) @map("paid_minutes")
   finalizedBy String? @map("finalized_by") @db.Uuid
   finalizedAt DateTime? @map("finalized_at")
   createdBy String? @map("created_by") @db.Uuid

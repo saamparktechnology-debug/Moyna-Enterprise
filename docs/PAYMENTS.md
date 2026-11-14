@@ -63,3 +63,17 @@ When an exchange is approved, the value of the old vehicle is paid in as a payme
 - It has its own number (`RFD` series), a mode, a date (not in the future), a reference, a reason and a retry key: the same key returns the refund already paid; a different refund under it is a 409.
 - A refund is a record of money paid out and is never changed or deleted (database rule). It lowers the credit in the dues list and appears in the customer ledger as `REFUND`. It is audited (`CUSTOMER_REFUND_PAID`) and queued as `customer.refund_paid`.
 - The ledger dialog has a **Refund credit** button for people who may pay refunds when the customer has credit.
+
+## Receipts (chunk 6)
+
+`GET /payments/:id/receipt` (needs `payments.view`) returns the receipt as a PDF: "Advance receipt" when the payment is an advance on a quotation, "Payment receipt" otherwise. It is also opened from the payment's detail with **View receipt**. A reversed payment's receipt says so.
+
+## Following up a due: promised date and guarantor (chunk 17, migration `20261007003800_due_promises_guarantors`)
+
+- Each invoice that still has an outstanding balance can carry **promised dates** (`due_promises`, append-only: a new promise is a new row, the latest one is the "Next promised" date shown in the Invoices due list) and **one guarantor** (`invoice_guarantors`: name, phone, optional relation and address).
+- A promised date cannot be in the past. A promise or guarantor can be noted only while something is still owed; a fully paid invoice is refused.
+- The guarantor is changed with the row version it was read at (a stale save is a conflict). Removing the guarantor also removes its KYC file.
+- **KYC file (optional):** one PDF, JPEG or PNG up to 5 MB, stored under `guarantors/<invoiceId>/`, replaced by uploading again. Uploading needs `kyc.upload`, opening needs `kyc.view`; every opening is audited. Audit entries hold the guarantor's name only, never the phone or address.
+- Endpoints (all under `/dues/invoices/:invoiceId`): `GET/POST promises` (`payments.view` / `payments.create`), `GET/PUT/DELETE guarantor` (`payments.view` / `payments.create`), `POST/DELETE/GET guarantor/kyc` (`kyc.upload` / `kyc.upload` / `kyc.view`).
+- Screen: Payments → Invoices due → "Follow up" opens one dialog for the promise, the guarantor and the optional KYC file.
+- Audit actions: `DUE_PROMISE_ADDED`, `GUARANTOR_SET`, `GUARANTOR_REMOVED`, `GUARANTOR_KYC_SET`, `GUARANTOR_KYC_REMOVED`, `GUARANTOR_KYC_VIEWED`.

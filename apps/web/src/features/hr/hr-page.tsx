@@ -7,10 +7,14 @@ import { useAuth } from '@/features/auth/auth-provider';
 import { AttendanceTab } from './attendance-tab';
 import { LeaveTab } from './leave-tab';
 import { MyDayTab } from './my-day-tab';
+import { AgreementsTab } from './agreements-tab';
+import { HolidaysTab } from './holidays-tab';
 import { PayrollTab } from './payroll-tab';
+import { PunchesTab } from './punches-tab';
 import { StaffTab } from './staff-tab';
 
-type TabId = 'my-day' | 'leave' | 'attendance' | 'payroll' | 'staff';
+type TabId =
+  'my-day' | 'leave' | 'attendance' | 'holidays' | 'punches' | 'agreements' | 'payroll' | 'staff';
 
 /** Staff and HR. Everyone sees their own day, leave, attendance and pay; managers see everyone in their branches. */
 export function HrPage() {
@@ -19,6 +23,9 @@ export function HrPage() {
     ...(can('attendance.mark') ? [{ id: 'my-day' as const, label: 'My day' }] : []),
     { id: 'leave', label: 'Leave' },
     { id: 'attendance', label: 'Attendance' },
+    { id: 'holidays', label: 'Holidays' },
+    ...(can('hr.manage') ? [{ id: 'punches' as const, label: 'Punches' }] : []),
+    ...(can('hr.manage') ? [{ id: 'agreements' as const, label: 'Agreements' }] : []),
     { id: 'payroll', label: 'Payroll' },
     { id: 'staff', label: 'Staff' },
   ];
@@ -41,6 +48,9 @@ export function HrPage() {
         {active === 'my-day' ? <MyDayTab /> : null}
         {active === 'leave' ? <LeaveTab /> : null}
         {active === 'attendance' ? <AttendanceTab /> : null}
+        {active === 'holidays' ? <HolidaysTab /> : null}
+        {active === 'punches' ? <PunchesTab /> : null}
+        {active === 'agreements' ? <AgreementsTab /> : null}
         {active === 'payroll' ? <PayrollTab /> : null}
         {active === 'staff' ? <StaffTab /> : null}
       </SectionPanel>

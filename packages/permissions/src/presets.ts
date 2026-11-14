@@ -7,6 +7,8 @@ const COMPANY_LEVEL: readonly PermissionCode[] = [
   'roles.manage',
   'settings.manage',
   'dashboards.view_company',
+  // Assembling is for the Super Admin; an Admin can be given it by adding it to their role.
+  'manufacturing.manage',
 ];
 
 const MANAGER_ONLY: readonly PermissionCode[] = [
@@ -34,6 +36,8 @@ const MANAGER_ONLY: readonly PermissionCode[] = [
   'quotations.deliver_unpaid',
   'exchanges.approve',
   'hr.manage',
+  'attendance.edit_punches',
+  'messages.bulk',
   'reports.export',
   'audit.view',
 ];

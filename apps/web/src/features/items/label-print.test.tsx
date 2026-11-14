@@ -113,4 +113,57 @@ describe('printing a barcode label', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit TOTO-X1' })).not.toBeInTheDocument();
   });
+  it('makes a barcode for an item that has none, and opens its label ready to print', async () => {
+    const bare = makeItem({ id: 'i-2', itemCode: 'BARE-1', barcodes: [] });
+    const withCode = makeItem({
+      id: 'i-2',
+      itemCode: 'BARE-1',
+      barcodes: [{ id: 'b-1', barcode: '2000000000022' }],
+    });
+    const { calls } = routeFetch({
+      ...itemHandlers(undefined, [bare]),
+      'POST /api/items/i-2/barcodes': () => jsonResponse(withCode, 201),
+      'POST /api/items/labels': () =>
+        jsonResponse({
+          labels: [
+            { itemId: 'i-2', itemCode: 'BARE-1', name: 'Bare item', barcode: '2000000000022' },
+          ],
+        }),
+    });
+    renderApp('/items');
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Create a barcode and print a label for BARE-1' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByLabelText('Label preview')).toBeInTheDocument();
+    expect(calls.find((call) => call.key === 'POST /api/items/i-2/barcodes')?.body).toEqual({
+      generate: true,
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Print' }));
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('says why when the barcode could not be made, and opens nothing', async () => {
+    routeFetch({
+      ...itemHandlers(undefined, [makeItem({ id: 'i-2', itemCode: 'BARE-1', barcodes: [] })]),
+      'POST /api/items/i-2/barcodes': () =>
+        jsonResponse(
+          { code: 'CONFLICT', message: 'Someone changed this item', details: [], requestId: 'r' },
+          409,
+        ),
+    });
+    renderApp('/items');
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Create a barcode and print a label for BARE-1' }),
+    );
+    expect(await screen.findByText('Someone changed this item')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('offers no barcode making to someone who may not manage items', async () => {
+    routeFetch(itemHandlers(VIEWER, [makeItem({ id: 'i-2', itemCode: 'BARE-1', barcodes: [] })]));
+    renderApp('/items');
+    await screen.findByText('BARE-1');
+    expect(screen.queryByRole('button', { name: /Create a barcode/ })).not.toBeInTheDocument();
+  });
 });

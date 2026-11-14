@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/status-badge';
 import { toast } from '@/components/toast';
 import { Button } from '@/components/ui/button';
 import { isFiltered, useListParams, useSearchBox } from '@/lib/use-list-params';
+import { DueFollowupDialog } from './due-followup-dialog';
 import { LedgerDialog } from './ledger-dialog';
 import { RefundDialog } from './refund-dialog';
 import { PaymentDetailDialog } from './payment-detail-dialog';
@@ -137,6 +138,7 @@ const DUES_DEFAULTS = { pageSize: 10, filters: { scope: 'outstanding' } };
 function DuesTab({ onPay }: { onPay: (customer: { id: string; name: string }) => void }) {
   const [params, set] = useListParams(DUES_DEFAULTS, 'dues');
   const [searchText, setSearchText, clearSearchText] = useSearchBox(params, set);
+  const [followUp, setFollowUp] = useState<DueInvoice | null>(null);
   const scope = params.filters['scope'] ?? 'outstanding';
   const query = useDues({
     page: params.page,
@@ -177,6 +179,18 @@ function DuesTab({ onPay }: { onPay: (customer: { id: string; name: string }) =>
       meta: { sortKey: 'outstanding', align: 'right', className: 'font-medium' },
     },
     {
+      id: 'nextPromisedDate',
+      header: 'Next promised',
+      cell: ({ row }) => (
+        <>
+          {row.original.nextPromisedDate ?? '—'}
+          {row.original.hasGuarantor ? (
+            <span className="mt-1 block text-xs text-muted-foreground">Has guarantor</span>
+          ) : null}
+        </>
+      ),
+    },
+    {
       id: 'status',
       header: 'Status',
       cell: ({ row }) => (
@@ -202,6 +216,14 @@ function DuesTab({ onPay }: { onPay: (customer: { id: string; name: string }) =>
         Number(row.original.outstanding) > 0 ? (
           <Can permission="payments.create">
             <RowActions>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Follow up ${row.original.invoiceNo ?? 'invoice'}`}
+                onClick={() => setFollowUp(row.original)}
+              >
+                Follow up
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -275,6 +297,18 @@ function DuesTab({ onPay }: { onPay: (customer: { id: string; name: string }) =>
         onSortChange={set.setSort}
         columnVisibility
       />
+      {followUp ? (
+        <DueFollowupDialog
+          invoiceId={followUp.invoiceId}
+          invoiceNo={followUp.invoiceNo ?? 'invoice'}
+          customerName={followUp.customerName}
+          onClose={() => setFollowUp(null)}
+          onSaved={(message) => {
+            setFollowUp(null);
+            toast.success(message);
+          }}
+        />
+      ) : null}
     </>
   );
 }

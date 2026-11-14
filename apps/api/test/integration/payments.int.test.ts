@@ -4,6 +4,8 @@ import {
   CustomerDueListResponseSchema,
   CustomerLedgerSchema,
   DueListResponseSchema,
+  DuePromiseListResponseSchema,
+  GuarantorResponseSchema,
   InvoiceSchema,
   PaymentListResponseSchema,
   PaymentSchema,
@@ -11,7 +13,7 @@ import {
 import type { Invoice, Payment } from '@erp/contracts';
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createAuthWorld, loggedIn, SUPER_PASSWORD } from '../support/auth-world.js';
+import { createAuthWorld, loggedIn, ORIGIN, SUPER_PASSWORD } from '../support/auth-world.js';
 import type { AuthWorld, TestClient } from '../support/auth-world.js';
 import { createTestApp } from '../support/create-test-app.js';
 import { createOwnerPrisma } from '../support/fixtures.js';
@@ -761,6 +763,99 @@ describe('payments and dues', () => {
           },
         }),
       ).rejects.toThrow(/more of the payment/i);
+    });
+  });
+
+  describe('following up a due: promised date and guarantor', () => {
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n');
+    const upload = (client: TestClient, invoiceId: string, type = 'application/pdf') =>
+      client.agent
+        .post(`/dues/invoices/${invoiceId}/guarantor/kyc`)
+        .query({ fileName: 'kyc.pdf' })
+        .set('Origin', ORIGIN)
+        .set('X-CSRF-Token', client.csrf)
+        .set('Content-Type', type)
+        .send(pdf);
+    const guarantorBody = { name: 'Mohan Lal', phone: '9000000099', relation: 'Brother' };
+
+    it('keeps promised dates, shows the latest in the dues list, and refuses past dates', async () => {
+      const customerId = await newCustomer();
+      const invoice = await issueInvoice(customerId, '500.00');
+      const past = await staffA.post(`/dues/invoices/${invoice.id}/promises`, {
+        promisedDate: '2020-01-01',
+      });
+      expect(past.status).toBe(400);
+      const future = '2099-01-01';
+      const made = await staffA.post(`/dues/invoices/${invoice.id}/promises`, {
+        promisedDate: future,
+        note: 'After the festival',
+      });
+      expect(made.status, JSON.stringify(made.body)).toBe(201);
+      expect(DuePromiseListResponseSchema.parse(made.body).items).toHaveLength(1);
+      await staffA.post(`/dues/invoices/${invoice.id}/promises`, { promisedDate: '2099-02-01' });
+      expect((await dueOf(invoice.id))?.nextPromisedDate).toBe('2099-02-01');
+      const history = await staffA.get(`/dues/invoices/${invoice.id}/promises`);
+      expect(DuePromiseListResponseSchema.parse(history.body).items).toHaveLength(2);
+      // Another branch cannot see the invoice at all.
+      expect((await staffB.get(`/dues/invoices/${invoice.id}/promises`)).status).toBe(404);
+    });
+
+    it('notes a guarantor, needs the current version to change it, and removes it', async () => {
+      const customerId = await newCustomer();
+      const invoice = await issueInvoice(customerId, '500.00');
+      const url = `/dues/invoices/${invoice.id}/guarantor`;
+      const first = await staffA.put(url, guarantorBody);
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      const saved = GuarantorResponseSchema.parse(first.body).guarantor;
+      expect(saved?.name).toBe('Mohan Lal');
+      expect((await dueOf(invoice.id))?.hasGuarantor).toBe(true);
+      // A second save without the version is a conflict.
+      expect((await staffA.put(url, { ...guarantorBody, name: 'Mohan' })).status).toBe(409);
+      const changed = await staffA.put(url, {
+        ...guarantorBody,
+        name: 'Mohan L',
+        rowVersion: saved?.rowVersion,
+      });
+      expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+      expect((await staffA.delete(url)).status).toBe(200);
+      expect(GuarantorResponseSchema.parse((await staffA.get(url)).body).guarantor).toBeNull();
+    });
+
+    it('keeps one optional KYC file, opened only by those who may and recorded when opened', async () => {
+      const customerId = await newCustomer();
+      const invoice = await issueInvoice(customerId, '500.00');
+      const url = `/dues/invoices/${invoice.id}/guarantor`;
+      // No guarantor yet: nothing to attach the file to.
+      expect((await upload(superAdmin, invoice.id)).status).toBe(422);
+      await superAdmin.put(url, guarantorBody);
+      expect((await upload(superAdmin, invoice.id, 'text/plain')).status).toBeGreaterThanOrEqual(
+        400,
+      );
+      const stored = await upload(superAdmin, invoice.id);
+      expect(stored.status, JSON.stringify(stored.body)).toBe(201);
+      expect(GuarantorResponseSchema.parse(stored.body).guarantor?.kyc?.fileName).toBe('kyc.pdf');
+      const opened = await superAdmin.get(`${url}/kyc`);
+      expect(opened.status).toBe(200);
+      expect(opened.headers['content-type']).toContain('application/pdf');
+      const audits = await owner.auditLog.findMany({
+        where: { entityId: invoice.id, action: 'GUARANTOR_KYC_VIEWED' },
+      });
+      expect(audits).toHaveLength(1);
+      expect((await superAdmin.delete(`${url}/kyc`)).status).toBe(200);
+      expect((await superAdmin.get(`${url}/kyc`)).status).toBe(404);
+    });
+
+    it('refuses a promise or guarantor once the invoice is paid in full', async () => {
+      const customerId = await newCustomer();
+      const invoice = await issueInvoice(customerId, '300.00');
+      await paid(staffA, customerId, '300.00');
+      const promise = await staffA.post(`/dues/invoices/${invoice.id}/promises`, {
+        promisedDate: '2099-01-01',
+      });
+      expect(promise.status).toBe(422);
+      expect(
+        (await staffA.put(`/dues/invoices/${invoice.id}/guarantor`, guarantorBody)).status,
+      ).toBe(422);
     });
   });
 });

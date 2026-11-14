@@ -123,6 +123,26 @@ export const PERMISSION_CATALOG = define([
   { code: 'hr.view', module: 'hr', description: 'View staff, leave and payroll' },
   { code: 'hr.manage', module: 'hr', description: 'Manage staff, leave and payroll' },
   { code: 'attendance.mark', module: 'hr', description: 'Mark own attendance' },
+  {
+    code: 'messages.send',
+    module: 'messages',
+    description: 'Send an invoice or receipt to a customer by WhatsApp or email',
+  },
+  {
+    code: 'messages.bulk',
+    module: 'messages',
+    description: 'Send a message to many customers at once and see the results',
+  },
+  {
+    code: 'manufacturing.manage',
+    module: 'manufacturing',
+    description: 'Assemble products from stock and set their selling price',
+  },
+  {
+    code: 'attendance.edit_punches',
+    module: 'hr',
+    description: 'Add, change and remove punch in and punch out times',
+  },
   { code: 'leave.request', module: 'hr', description: 'Ask for own leave' },
   {
     code: 'dashboards.view_branch',

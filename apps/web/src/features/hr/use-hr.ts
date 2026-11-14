@@ -5,13 +5,16 @@ import type {
   CancelLeaveRequest,
   CorrectAttendanceRequest,
   CreateLeaveRequest,
+  CreatePunchRequest,
   CreateStaffRequest,
   DeactivateStaffRequest,
   FinalizePayrollRequest,
   GeneratePayrollRequest,
   ReactivateStaffRequest,
   RejectLeaveRequest,
+  RemovePunchRequest,
   UpdatePayrollRequest,
+  UpdatePunchRequest,
   UpdateStaffRequest,
 } from '@erp/contracts';
 import {
@@ -20,6 +23,7 @@ import {
   checkIn,
   checkOut,
   correctAttendance,
+  createPunch,
   createStaff,
   deactivateStaff,
   finalizePayroll,
@@ -31,11 +35,14 @@ import {
   listDepartments,
   listLeave,
   listPayroll,
+  listPunches,
   listStaff,
   reactivateStaff,
   rejectLeave,
+  removePunch,
   requestLeave,
   updatePayroll,
+  updatePunch,
   updateStaff,
 } from './hr-api';
 import type {
@@ -62,6 +69,13 @@ export const useCandidates = (enabled: boolean) =>
   useQuery({ queryKey: [KEY, 'candidates'], queryFn: listCandidates, enabled });
 export const useMyAttendance = (enabled: boolean) =>
   useQuery({ queryKey: [KEY, 'my-day'], queryFn: getMyAttendance, enabled, retry: false });
+export const usePunches = (date: string, staffId: string, enabled = true) =>
+  useQuery({
+    queryKey: [KEY, 'punches', date, staffId],
+    queryFn: () => listPunches(date, staffId || undefined),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
 export const useAttendance = (params: AttendanceListParams) =>
   useQuery({
     queryKey: [KEY, 'attendance', params],
@@ -108,6 +122,20 @@ export function useHrMutations() {
     checkOut: useMutation({ mutationFn: checkOut, onSuccess: refresh }),
     correct: useMutation({
       mutationFn: (v: CorrectAttendanceRequest) => correctAttendance(v),
+      onSuccess: refresh,
+    }),
+    addPunch: useMutation({
+      mutationFn: (v: CreatePunchRequest) => createPunch(v),
+      onSuccess: refresh,
+    }),
+    editPunch: useMutation({
+      mutationFn: ({ id, values }: { id: string; values: UpdatePunchRequest }) =>
+        updatePunch(id, values),
+      onSuccess: refresh,
+    }),
+    deletePunch: useMutation({
+      mutationFn: ({ id, values }: { id: string; values: RemovePunchRequest }) =>
+        removePunch(id, values),
       onSuccess: refresh,
     }),
     requestLeave: useMutation({

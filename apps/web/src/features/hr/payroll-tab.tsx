@@ -147,6 +147,22 @@ export function PayrollTab() {
       ),
     },
     {
+      id: 'hours',
+      header: 'Hours',
+      meta: { align: 'right' },
+      cell: ({ row }) =>
+        row.original.payBasis === 'HOURS' && row.original.hoursWorked ? (
+          <>
+            {row.original.hoursWorked}
+            <span className="block text-xs text-muted-foreground">
+              {row.original.creditedDays} paid days
+            </span>
+          </>
+        ) : (
+          '—'
+        ),
+    },
+    {
       id: 'leave',
       header: 'Leave',
       cell: ({ row }) => (

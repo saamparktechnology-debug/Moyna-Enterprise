@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DateOnlySchema } from './battery-dates.js';
 import { DOCUMENT_TYPES } from './documents.js';
+import { DEFAULT_WEEKLY_OFF, PayOffDaysSettingSchema, WeeklyOffSettingSchema } from './holidays.js';
 import { PaginationQuerySchema, paginatedSchema } from './pagination.js';
 
 // ---------- settings ----------
@@ -28,6 +29,69 @@ export const SETTING_DEFINITIONS = [
     description: 'The trading name of the business.',
     type: 'text',
     schema: text(120),
+  },
+  {
+    key: 'company.full_duty_hours',
+    group: 'company',
+    label: 'Full duty, in hours',
+    description: 'The hours of work that make one full day for pay. Eight if this is not set.',
+    type: 'int',
+    schema: z.number().int().min(1).max(24),
+  },
+  {
+    key: 'company.weekly_off_days',
+    group: 'company',
+    label: 'Weekly off days',
+    description: `The days the shop is closed each week, such as SUN or SAT,SUN, or NONE for no weekly off. ${DEFAULT_WEEKLY_OFF} if this is not set. A person can have weekly off days of their own on the Staff screen.`,
+    type: 'text',
+    schema: WeeklyOffSettingSchema,
+  },
+  {
+    key: 'company.pay_off_days_daily',
+    group: 'company',
+    label: 'Pay daily staff for off days',
+    description:
+      'YES pays a person paid by the day a full day for each weekly off and holiday they do not work. NO (the default) pays only for the hours worked. Staff on a fixed monthly salary are not affected.',
+    type: 'text',
+    schema: PayOffDaysSettingSchema,
+  },
+  {
+    key: 'company.invoice_prefix',
+    group: 'company',
+    label: 'Invoice number prefix',
+    description:
+      'The letters an invoice number starts with: ME gives ME-111120261123 (day, month, year, hour, minute).',
+    type: 'text',
+    schema: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9]{1,3}$/, 'Use 1 to 3 letters or digits'),
+  },
+  {
+    key: 'company.proprietor',
+    group: 'company',
+    label: 'Proprietor',
+    description:
+      'The owner’s name, printed under the company name on invoices (for example, Prop - Name).',
+    type: 'text',
+    schema: text(120),
+  },
+  {
+    key: 'company.tagline',
+    group: 'company',
+    label: 'Tagline',
+    description: 'A short line printed faintly behind the invoice, such as Powering Every Journey.',
+    type: 'text',
+    schema: text(80),
+  },
+  {
+    key: 'company.invoice_terms',
+    group: 'company',
+    label: 'Invoice terms',
+    description:
+      'The line printed at the foot of every invoice, such as Goods once sold will not take back.',
+    type: 'text',
+    schema: text(200),
   },
   {
     key: 'company.address',

@@ -33,6 +33,7 @@ export function toItemDto(row: ItemRow, viewer: ItemViewer): Item {
     isActive: row.isActive,
     actualPurchasePrice: viewer.isSuperAdmin ? (row.actualPurchasePrice?.toFixed(2) ?? null) : null,
     displayPurchasePrice: row.displayPurchasePrice?.toFixed(2) ?? null,
+    sellingPrice: row.sellingPrice?.toFixed(2) ?? null,
     barcodes: row.itemBarcodes.map((barcode) => ({ id: barcode.id, barcode: barcode.barcode })),
     rowVersion: row.rowVersion,
     createdAt: row.createdAt.toISOString(),

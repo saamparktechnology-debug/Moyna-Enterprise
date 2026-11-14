@@ -1,8 +1,16 @@
 //apps/web/src/features/hr/hr.test.tsx
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
-import type { Attendance, Leave, Payroll, Staff } from '@erp/contracts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  Agreement,
+  AgreementTemplate,
+  Attendance,
+  Leave,
+  Payroll,
+  Punch,
+  Staff,
+} from '@erp/contracts';
 import { jsonResponse, routeFetch } from '@/test/fetch-mock';
 import type { RouteHandler } from '@/test/fetch-mock';
 import { renderApp } from '@/test/render-app';
@@ -152,6 +160,7 @@ describe('the HR page and who sees what', () => {
       'My day',
       'Leave',
       'Attendance',
+      'Holidays',
       'Payroll',
       'Staff',
     ]);
@@ -162,7 +171,13 @@ describe('the HR page and who sees what', () => {
   it('starts on leave for someone who cannot mark attendance', async () => {
     open(handlers(VIEWER));
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Leave', 'Attendance', 'Payroll', 'Staff']);
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Leave',
+      'Attendance',
+      'Holidays',
+      'Payroll',
+      'Staff',
+    ]);
     expect(await screen.findByRole('table', { name: 'Leave' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ask for leave' })).not.toBeInTheDocument();
   });
@@ -188,7 +203,7 @@ describe('my day', () => {
       }),
     );
     expect(await screen.findByText(/You have no staff profile yet/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Punch in' })).not.toBeInTheDocument();
   });
 
   it('checks in, and shows the result', async () => {
@@ -198,8 +213,8 @@ describe('my day', () => {
           jsonResponse(attendance({ state: 'OPEN', checkOut: null, hoursWorked: null }), 201),
       }),
     );
-    await userEvent.click(await screen.findByRole('button', { name: 'Check in' }));
-    expect(await screen.findByText('Checked in')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Punch in' }));
+    expect(await screen.findByText('Punched in')).toBeInTheDocument();
     expect(sent(calls, 'POST /api/attendance/check-in')).toHaveLength(1);
   });
 
@@ -221,19 +236,20 @@ describe('my day', () => {
       }),
     );
     expect(
-      await screen.findByText(/Checked in at \d{2}:\d{2}.* on 2026-10-09/),
+      await screen.findByText(/Punched in at \d{2}:\d{2}.* on 2026-10-09/),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Check out' }));
-    expect(await screen.findByText('Checked out')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Punch in' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Punch out' }));
+    expect(await screen.findByText('Punched out')).toBeInTheDocument();
     expect(sent(calls, 'POST /api/attendance/check-out')).toHaveLength(1);
   });
 
-  it('shows a finished day with its hours, and nothing more to do', async () => {
+  it('shows a finished day with its hours, and lets the person punch in again', async () => {
     open(handlers(SELF, { 'GET /api/attendance/me': () => jsonResponse(myDay(attendance())) }));
-    expect(await screen.findByText(/Done for today.*8.50 hours/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Check out' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/\(8\.50 hours\)/)).toBeInTheDocument();
+    expect(screen.getByText('You are punched out.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Punch in' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Punch out' })).not.toBeInTheDocument();
   });
 
   it('does not offer attendance to someone who has left', async () => {
@@ -244,7 +260,7 @@ describe('my day', () => {
       }),
     );
     expect(await screen.findByText(/You left on 2026-09-30/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Punch in' })).not.toBeInTheDocument();
   });
 
   it('shows why the server refused, such as being on leave', async () => {
@@ -256,7 +272,7 @@ describe('my day', () => {
           ]),
       }),
     );
-    await userEvent.click(await screen.findByRole('button', { name: 'Check in' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Punch in' }));
     expect(await screen.findByText('You are on approved leave today')).toBeInTheDocument();
     expect(screen.getByText('Cancel the leave first if you are working')).toBeInTheDocument();
   });
@@ -768,6 +784,7 @@ describe('staff', () => {
       department: 'WORKSHOP',
       designation: 'Welder',
       joinDate: '2026-10-01',
+      salaryType: 'FIXED',
       monthlySalary: '25000',
     });
   });
@@ -854,5 +871,719 @@ describe('staff', () => {
       rowVersion: 7,
     });
     void OTHER_ID;
+  });
+});
+
+const punch = (over: Partial<Punch> = {}): Punch => ({
+  id: 'pn-1',
+  staffId: STAFF_ID,
+  staffName: 'Asha Rao',
+  employeeCode: 'EMP-0001',
+  workDate: '2026-10-10',
+  punchedInAt: '2026-10-10T03:30:00.000Z',
+  punchedOutAt: '2026-10-10T07:30:00.000Z',
+  minutes: 240,
+  source: 'SELF',
+  editedByName: null,
+  editReason: null,
+  rowVersion: 2,
+  ...over,
+});
+const PUNCH_EDITOR = [...MANAGER, 'attendance.edit_punches'];
+const punchList = (items: Punch[]) => ({ date: '2026-10-10', dutyMinutes: 480, items });
+
+describe('my day with several punches', () => {
+  it('lists today’s punches and the hours worked against a full day, and offers another punch in', async () => {
+    open(
+      handlers(SELF, {
+        'GET /api/attendance/me': () =>
+          jsonResponse({
+            ...myDay(attendance({ state: 'COMPLETE' })),
+            punches: [
+              punch(),
+              punch({
+                id: 'pn-2',
+                punchedInAt: '2026-10-10T08:30:00.000Z',
+                punchedOutAt: '2026-10-10T10:00:00.000Z',
+                minutes: 90,
+              }),
+            ],
+            workedMinutesToday: 330,
+            dutyMinutes: 480,
+          }),
+      }),
+    );
+    const table = await screen.findByRole('table', { name: 'Today’s punches' });
+    expect(within(table).getAllByRole('row')).toHaveLength(3);
+    expect(within(table).getByText('4 h')).toBeInTheDocument();
+    expect(within(table).getByText('1 h 30 m')).toBeInTheDocument();
+    expect(screen.getByText(/Worked today: 5 h 30 m of 8 h/)).toBeInTheDocument();
+    expect(screen.getByText('You are punched out.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Punch in' })).toBeInTheDocument();
+  });
+
+  it('shows the open punch and offers punch out', async () => {
+    open(
+      handlers(SELF, {
+        'GET /api/attendance/me': () =>
+          jsonResponse({
+            ...myDay(attendance({ state: 'OPEN', checkOut: null, hoursWorked: null })),
+            punches: [punch({ punchedOutAt: null, minutes: null })],
+            workedMinutesToday: 0,
+            dutyMinutes: 480,
+          }),
+      }),
+    );
+    expect(await screen.findByText(/Punched in at \d{2}:\d{2}/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Punch out' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Punch in' })).not.toBeInTheDocument();
+    expect(screen.getByText('Still in')).toBeInTheDocument();
+  });
+});
+
+describe('punches, for managers', () => {
+  const day = (items: Punch[] = [punch()]): Record<string, RouteHandler> => ({
+    'GET /api/attendance/punches?*': () => jsonResponse(punchList(items)),
+  });
+
+  it('is a tab only for managers', async () => {
+    open(handlers(SELF));
+    await screen.findByRole('tab', { name: 'My day' });
+    expect(screen.queryByRole('tab', { name: 'Punches' })).not.toBeInTheDocument();
+  });
+
+  it('lists a day’s punches with who, when, how long and any change, and asks for the day and person chosen', async () => {
+    const { calls } = open(
+      handlers(MANAGER, {
+        ...day([punch({ editReason: 'Left later', editedByName: 'Meena', source: 'MANAGER' })]),
+      }),
+    );
+    await tab('Punches');
+    const table = await screen.findByRole('table', { name: 'Punches' });
+    expect(within(table).getByText('Asha Rao')).toBeInTheDocument();
+    expect(within(table).getByText('4 h')).toBeInTheDocument();
+    expect(within(table).getByText('Left later (Meena)')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Day'), { target: { value: '2026-10-09' } });
+    await waitFor(() =>
+      expect(lastCall(calls, 'GET /api/attendance/punches?')).toContain('date=2026-10-09'),
+    );
+    await userEvent.selectOptions(await screen.findByLabelText('Person'), STAFF_ID);
+    await waitFor(() =>
+      expect(lastCall(calls, 'GET /api/attendance/punches?')).toContain(`staffId=${STAFF_ID}`),
+    );
+  });
+
+  it('says so when no one punched in', async () => {
+    open(handlers(MANAGER, day([])));
+    await tab('Punches');
+    expect(await screen.findByText('No one punched in on this day.')).toBeInTheDocument();
+  });
+
+  it('shows no adding, changing or removing to a manager who may not edit punch times', async () => {
+    open(handlers(MANAGER, day()));
+    await tab('Punches');
+    await screen.findByRole('table', { name: 'Punches' });
+    expect(screen.queryByRole('button', { name: 'Add a punch' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Change punch/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove punch/ })).not.toBeInTheDocument();
+  });
+
+  it('adds a punch with a person, times and a reason, and says what is missing first', async () => {
+    const { calls } = open(
+      handlers(PUNCH_EDITOR, {
+        ...day(),
+        'POST /api/attendance/punches': () => jsonResponse(punch({ id: 'pn-9' }), 201),
+      }),
+    );
+    await tab('Punches');
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a punch' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save punch' }));
+    expect(await within(dialog).findByText('Choose the person')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/attendance/punches')).toHaveLength(0);
+    await userEvent.selectOptions(await within(dialog).findByLabelText('Person'), STAFF_ID);
+    fireEvent.change(within(dialog).getByLabelText('Punch in'), {
+      target: { value: '2026-10-10T09:00' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Punch out'), {
+      target: { value: '2026-10-10T13:00' },
+    });
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Forgot to punch');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save punch' }));
+    expect(await screen.findByText('Punch added')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/attendance/punches')[0]?.body).toMatchObject({
+      staffId: STAFF_ID,
+      reason: 'Forgot to punch',
+    });
+    expect(
+      (sent(calls, 'POST /api/attendance/punches')[0]?.body as { punchedOutAt: string })
+        .punchedOutAt,
+    ).toBeTruthy();
+  });
+
+  it('changes a punch with the version that was read and a reason', async () => {
+    const { calls } = open(
+      handlers(PUNCH_EDITOR, {
+        ...day(),
+        'PATCH /api/attendance/punches/pn-1': () => jsonResponse(punch({ minutes: 270 })),
+      }),
+    );
+    await tab('Punches');
+    await userEvent.click(await screen.findByRole('button', { name: /^Change punch of Asha Rao/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Punch out'), {
+      target: { value: '2026-10-10T13:30' },
+    });
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Left later');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save punch' }));
+    expect(await screen.findByText('Punch saved')).toBeInTheDocument();
+    expect(sent(calls, 'PATCH /api/attendance/punches/pn-1')[0]?.body).toMatchObject({
+      reason: 'Left later',
+      rowVersion: 2,
+    });
+  });
+
+  it('removes a punch only with a reason, and sends the version', async () => {
+    const { calls } = open(
+      handlers(PUNCH_EDITOR, {
+        ...day(),
+        'POST /api/attendance/punches/pn-1/remove': () => new Response(null, { status: 204 }),
+      }),
+    );
+    await tab('Punches');
+    await userEvent.click(await screen.findByRole('button', { name: /^Remove punch of Asha Rao/ }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove punch' }));
+    expect(await within(dialog).findByText('Enter the reason')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/attendance/punches/pn-1/remove')).toHaveLength(0);
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Punched by mistake');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove punch' }));
+    expect(await screen.findByText('Punch removed')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/attendance/punches/pn-1/remove')[0]?.body).toEqual({
+      reason: 'Punched by mistake',
+      rowVersion: 2,
+    });
+  });
+
+  it('shows what the server refused, such as an overlap', async () => {
+    open(
+      handlers(PUNCH_EDITOR, {
+        ...day(),
+        'PATCH /api/attendance/punches/pn-1': () =>
+          refusal('That overlaps another punch of the same person', 409, [
+            { field: 'punchedInAt', message: 'They have a punch from 09:00 to 13:00' },
+          ]),
+      }),
+    );
+    await tab('Punches');
+    await userEvent.click(await screen.findByRole('button', { name: /^Change punch of Asha Rao/ }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Worked on');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save punch' }));
+    expect(
+      await within(dialog).findByText('That overlaps another punch of the same person'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('payroll by hours', () => {
+  it('shows the hours worked and the days they pay for', async () => {
+    open(
+      handlers(MANAGER, {
+        'GET /api/payroll?*': () =>
+          jsonResponse({
+            ...pageOf([
+              payroll({ payBasis: 'HOURS', hoursWorked: '174.00', creditedDays: '21.50' }),
+            ]),
+            totals: { gross: '31000.00', deductions: '2000.00', net: '29000.00' },
+          }),
+      }),
+    );
+    await tab('Payroll');
+    const table = await screen.findByRole('table', { name: 'Payroll' });
+    expect(within(table).getByText('174.00')).toBeInTheDocument();
+    expect(within(table).getByText('21.50 paid days')).toBeInTheDocument();
+  });
+});
+
+describe('the two kinds of salary', () => {
+  it('offers a fixed monthly salary or pay by the day, each with its own amount', async () => {
+    open(handlers(MANAGER));
+    await tab('Staff');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Asha Rao' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Kind of salary')).toHaveValue('FIXED');
+    expect(within(dialog).getByLabelText('Monthly salary')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Daily rate')).not.toBeInTheDocument();
+    await userEvent.selectOptions(within(dialog).getByLabelText('Kind of salary'), 'DAILY');
+    expect(within(dialog).getByLabelText('Daily rate')).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Monthly salary')).not.toBeInTheDocument();
+  });
+
+  it('changes a person to pay by the day, sending the daily rate and no monthly salary', async () => {
+    const { calls } = open(
+      handlers(MANAGER, {
+        [`PATCH /api/staff/${STAFF_ID}`]: () =>
+          jsonResponse(staff({ salaryType: 'DAILY', dailyRate: '400.00', monthlySalary: '0.00' })),
+      }),
+    );
+    await tab('Staff');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Asha Rao' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Kind of salary'), 'DAILY');
+    await userEvent.type(within(dialog).getByLabelText('Daily rate'), '400');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('Asha Rao updated')).toBeInTheDocument();
+    const body = sent(calls, `PATCH /api/staff/${STAFF_ID}`)[0]?.body as Record<string, unknown>;
+    expect(body).toMatchObject({ salaryType: 'DAILY', dailyRate: '400', rowVersion: 4 });
+    expect(body).not.toHaveProperty('monthlySalary');
+  });
+
+  it('shows a person paid by the day with the daily rate, and a fixed salary with the month', async () => {
+    open(
+      handlers(MANAGER, {
+        'GET /api/staff?*': () =>
+          jsonResponse(
+            pageOf([
+              staff(),
+              staff({
+                id: 's-2',
+                fullName: 'Ravi Das',
+                employeeCode: 'EMP-0002',
+                salaryType: 'DAILY',
+                dailyRate: '400.00',
+                monthlySalary: '0.00',
+              }),
+            ]),
+          ),
+      }),
+    );
+    await tab('Staff');
+    const table = await screen.findByRole('table', { name: /staff/i });
+    const rows = within(table).getAllByRole('row');
+    expect(rows[1]).toHaveTextContent('31000.00');
+    expect(rows[1]).toHaveTextContent('a month');
+    expect(rows[2]).toHaveTextContent('400.00');
+    expect(rows[2]).toHaveTextContent('a day');
+  });
+
+  it('asks for the daily rate when adding someone paid by the day, and sends it', async () => {
+    const { calls } = open(
+      handlers(MANAGER, {
+        'POST /api/staff': () =>
+          jsonResponse(staff({ salaryType: 'DAILY', dailyRate: '400.00' }), 201),
+      }),
+    );
+    await tab('Staff');
+    await userEvent.click(await screen.findByRole('button', { name: 'Add staff' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.selectOptions(await within(dialog).findByLabelText('Person'), USER_ID);
+    await userEvent.type(within(dialog).getByLabelText('Employee code'), 'EMP-0003');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Kind of salary'), 'DAILY');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add staff' }));
+    expect(await within(dialog).findByText('Enter the daily rate')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/staff')).toHaveLength(0);
+    await userEvent.type(within(dialog).getByLabelText('Daily rate'), '400');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add staff' }));
+    await screen.findByText('EMP-0003 added as staff');
+    const body = sent(calls, 'POST /api/staff').at(-1)?.body as Record<string, unknown>;
+    expect(body).toMatchObject({ salaryType: 'DAILY', dailyRate: '400' });
+    expect(body).not.toHaveProperty('monthlySalary');
+  });
+});
+
+const AG_ID = 'cb6f6a8e-5a56-4a1c-9b1e-0f1d2c3b4a59';
+const TEMPLATE_ID = 'db6f6a8e-5a56-4a1c-9b1e-0f1d2c3b4a59';
+const agreement = (over: Partial<Agreement> = {}): Agreement => ({
+  id: AG_ID,
+  agreementNo: 'AG-111120261123',
+  staffId: STAFF_ID,
+  staffName: 'Asha Rao',
+  employeeCode: 'EMP-0001',
+  branchCode: 'HQ',
+  templateId: TEMPLATE_ID,
+  templateName: 'Standard terms',
+  title: 'Employment agreement',
+  body: 'Asha Rao works as Fitter. The Employee will keep the shop safe.',
+  effectiveFrom: '2026-11-01',
+  status: 'DRAFT',
+  signedOn: null,
+  hasSignedCopy: false,
+  signedFileName: null,
+  employeeSigned: false,
+  adminSigned: false,
+  recordedByName: null,
+  endedOn: null,
+  endReason: null,
+  createdAt: '2026-11-11T05:53:00.000Z',
+  rowVersion: 1,
+  ...over,
+});
+const template = (over: Partial<AgreementTemplate> = {}): AgreementTemplate => ({
+  id: TEMPLATE_ID,
+  name: 'Standard terms',
+  body: 'Terms for {{employee_name}}, who works as {{designation}} in the shop.',
+  isActive: true,
+  agreementCount: 2,
+  updatedAt: '2026-11-10T05:00:00.000Z',
+  rowVersion: 1,
+  ...over,
+});
+const agHandlers = (
+  items: Agreement[] = [agreement()],
+  extra: Record<string, RouteHandler> = {},
+): Record<string, RouteHandler> =>
+  handlers(MANAGER, {
+    'GET /api/agreements?*': () => jsonResponse({ items }),
+    'GET /api/agreement-templates': () => jsonResponse({ items: [template()] }),
+    ...extra,
+  });
+const pdf = () =>
+  new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } });
+const rowOf = (table: HTMLElement, no: string) =>
+  within(table)
+    .getAllByRole('row')
+    .find((row) => row.textContent?.includes(no)) as HTMLElement;
+
+describe('employee agreements', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => 'blob:agreement'),
+        revokeObjectURL: vi.fn(),
+      }),
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('is a tab only for those who manage HR', async () => {
+    open(handlers(SELF));
+    await screen.findByRole('tab', { name: 'My day' });
+    expect(screen.queryByRole('tab', { name: 'Agreements' })).not.toBeInTheDocument();
+  });
+
+  it('lists agreements with their state, and offers what each state allows', async () => {
+    open(
+      agHandlers([
+        agreement({ id: 'a1', agreementNo: 'AG-1', status: 'DRAFT' }),
+        agreement({
+          id: 'a2',
+          agreementNo: 'AG-2',
+          status: 'SIGNED',
+          signedOn: '2026-11-02',
+          hasSignedCopy: true,
+        }),
+        agreement({
+          id: 'a3',
+          agreementNo: 'AG-3',
+          status: 'ENDED',
+          endedOn: '2026-12-31',
+          endReason: 'Resigned',
+          hasSignedCopy: true,
+        }),
+        agreement({
+          id: 'a4',
+          agreementNo: 'AG-4',
+          status: 'DISCARDED',
+          endReason: 'Wrong person',
+        }),
+      ]),
+    );
+    await tab('Agreements');
+    const table = await screen.findByRole('table', { name: 'Agreements' });
+    const names = (no: string) =>
+      within(rowOf(table, no))
+        .queryAllByRole('button')
+        .map((button) => button.getAttribute('aria-label'));
+    expect(names('AG-1')).toEqual([
+      'Print AG-1',
+      'Edit AG-1',
+      'Upload the signed copy of AG-1',
+      'Throw away AG-1',
+    ]);
+    expect(names('AG-2')).toEqual(['Read AG-2', 'View the signed copy of AG-2', 'End AG-2']);
+    expect(names('AG-3')).toEqual(['Read AG-3', 'View the signed copy of AG-3']);
+    expect(names('AG-4')).toEqual([]);
+    expect(rowOf(table, 'AG-3')).toHaveTextContent('ended 2026-12-31: Resigned');
+    expect(rowOf(table, 'AG-4')).toHaveTextContent('Wrong person');
+  });
+
+  it('prints a draft: the PDF opens in the page, ready to print', async () => {
+    const { calls } = open(agHandlers(undefined, { [`GET /api/agreements/${AG_ID}/pdf`]: pdf }));
+    await tab('Agreements');
+    await userEvent.click(await screen.findByRole('button', { name: 'Print AG-111120261123' }));
+    const preview = await screen.findByRole('region', { name: 'Document preview' });
+    expect(within(preview).getByTitle('Agreement AG-111120261123')).toHaveAttribute(
+      'src',
+      'blob:agreement',
+    );
+    expect(calls.some((call) => call.key === `GET /api/agreements/${AG_ID}/pdf`)).toBe(true);
+  });
+
+  it('makes an agreement from a template, filling the terms in so they can be edited first', async () => {
+    const { calls } = open(
+      agHandlers(undefined, {
+        'POST /api/agreements': () => jsonResponse(agreement({ id: 'new' }), 201),
+      }),
+    );
+    await tab('Agreements');
+    await userEvent.click(await screen.findByRole('button', { name: 'New agreement' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New agreement' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Make agreement' }));
+    expect(await within(dialog).findAllByText('Choose the employee')).toHaveLength(2);
+    expect(sent(calls, 'POST /api/agreements')).toHaveLength(0);
+    await userEvent.selectOptions(await within(dialog).findByLabelText('Employee'), STAFF_ID);
+    await userEvent.selectOptions(await within(dialog).findByLabelText('Template'), TEMPLATE_ID);
+    const terms = within(dialog).getByLabelText('Terms and rules');
+    expect(terms).toHaveValue(
+      'Terms for {{employee_name}}, who works as {{designation}} in the shop.',
+    );
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('Standard terms');
+    await userEvent.type(terms, ' Extra rule.');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Make agreement' }));
+    expect(await screen.findByText(/made. Print it for signing/)).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/agreements')[0]?.body).toMatchObject({
+      staffId: STAFF_ID,
+      templateId: TEMPLATE_ID,
+      title: 'Standard terms',
+      body: 'Terms for {{employee_name}}, who works as {{designation}} in the shop. Extra rule.',
+    });
+  });
+
+  it('adds a detail to the terms with a button, and asks for a template or the terms', async () => {
+    const { calls } = open(agHandlers());
+    await tab('Agreements');
+    await userEvent.click(await screen.findByRole('button', { name: 'New agreement' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New agreement' });
+    await userEvent.selectOptions(await within(dialog).findByLabelText('Employee'), STAFF_ID);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Make agreement' }));
+    expect(
+      await within(dialog).findByText('Choose a template or write the terms'),
+    ).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/agreements')).toHaveLength(0);
+    const group = within(dialog).getByRole('group', { name: 'Add a detail' });
+    await userEvent.click(within(group).getByRole('button', { name: 'Employee name' }));
+    expect(within(dialog).getByLabelText('Terms and rules')).toHaveValue('{{employee_name}}');
+  });
+
+  it('edits a draft with the version that was read', async () => {
+    const { calls } = open(
+      agHandlers(undefined, {
+        [`PATCH /api/agreements/${AG_ID}`]: () => jsonResponse(agreement({ rowVersion: 2 })),
+      }),
+    );
+    await tab('Agreements');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit AG-111120261123' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByLabelText('Employee')).not.toBeInTheDocument();
+    const title = within(dialog).getByLabelText('Title');
+    await userEvent.clear(title);
+    await userEvent.type(title, 'Revised agreement');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('AG-111120261123 saved')).toBeInTheDocument();
+    expect(sent(calls, `PATCH /api/agreements/${AG_ID}`)[0]?.body).toMatchObject({
+      title: 'Revised agreement',
+      rowVersion: 1,
+    });
+  });
+
+  it('uploads the signed copy as the acceptance, only with both signatures confirmed', async () => {
+    const { calls } = open(
+      agHandlers(undefined, {
+        [`POST /api/agreements/${AG_ID}/signed-copy*`]: () =>
+          jsonResponse(
+            agreement({
+              status: 'SIGNED',
+              signedOn: '2026-11-02',
+              hasSignedCopy: true,
+              rowVersion: 2,
+            }),
+          ),
+      }),
+    );
+    await tab('Agreements');
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Upload the signed copy of AG-111120261123' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload signed copy' }));
+    expect(await within(dialog).findByText(/Choose the scan or photo/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/The employee must have signed it, on the left/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/The Super Admin must have signed it, on the right/),
+    ).toBeInTheDocument();
+    const file = new File(['%PDF-1.4'], 'signed.pdf', { type: 'application/pdf' });
+    await userEvent.upload(within(dialog).getByLabelText('Signed copy'), file);
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /The employee has signed it/ }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /The Super Admin has signed it/ }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload signed copy' }));
+    expect(await screen.findByText('AG-111120261123 is signed')).toBeInTheDocument();
+    const call = calls.find((c) => c.key.startsWith(`POST /api/agreements/${AG_ID}/signed-copy`));
+    expect(call?.key).toContain('fileName=signed.pdf');
+    expect(call?.key).toContain('employeeSigned=true');
+    expect(call?.key).toContain('adminSigned=true');
+    expect(call?.key).toContain('rowVersion=1');
+  });
+
+  it('refuses a signed copy over 5 MB before sending it', async () => {
+    const { calls } = open(agHandlers());
+    await tab('Agreements');
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Upload the signed copy of AG-111120261123' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'scan.pdf', {
+      type: 'application/pdf',
+    });
+    await userEvent.upload(within(dialog).getByLabelText('Signed copy'), big);
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /The employee has signed it/ }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /The Super Admin has signed it/ }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload signed copy' }));
+    expect(await within(dialog).findByText('The file is larger than 5 MB')).toBeInTheDocument();
+    expect(calls.some((c) => c.key.startsWith(`POST /api/agreements/${AG_ID}/signed-copy`))).toBe(
+      false,
+    );
+  });
+
+  it('shows what the server refused when the signed copy is uploaded', async () => {
+    open(
+      agHandlers(undefined, {
+        [`POST /api/agreements/${AG_ID}/signed-copy*`]: () =>
+          refusal('This agreement was changed by someone else. Reload it and try again', 409),
+      }),
+    );
+    await tab('Agreements');
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Upload the signed copy of AG-111120261123' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.upload(
+      within(dialog).getByLabelText('Signed copy'),
+      new File(['%PDF-1.4'], 'signed.pdf', { type: 'application/pdf' }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /The employee has signed it/ }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /The Super Admin has signed it/ }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload signed copy' }));
+    expect(await within(dialog).findByText(/changed by someone else/)).toBeInTheDocument();
+  });
+
+  it('ends a signed agreement with a day and a reason, and throws away a draft with a reason', async () => {
+    const { calls } = open(
+      agHandlers(
+        [
+          agreement({ id: 'd1', agreementNo: 'AG-D', status: 'DRAFT' }),
+          agreement({
+            id: 's1',
+            agreementNo: 'AG-S',
+            status: 'SIGNED',
+            signedOn: '2026-11-02',
+            hasSignedCopy: true,
+          }),
+        ],
+        {
+          'POST /api/agreements/s1/end': () =>
+            jsonResponse(agreement({ id: 's1', status: 'ENDED' })),
+          'POST /api/agreements/d1/discard': () =>
+            jsonResponse(agreement({ id: 'd1', status: 'DISCARDED' })),
+        },
+      ),
+    );
+    await tab('Agreements');
+    await userEvent.click(await screen.findByRole('button', { name: 'End AG-S' }));
+    let dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'End agreement' }));
+    expect(await within(dialog).findByText('Enter the reason')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Resigned');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'End agreement' }));
+    expect(await screen.findByText('AG-S ended')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/agreements/s1/end')[0]?.body).toMatchObject({
+      reason: 'Resigned',
+      rowVersion: 1,
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Throw away AG-D' }));
+    dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Reason'), 'Wrong person');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Throw away' }));
+    expect(await screen.findByText('AG-D thrown away')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/agreements/d1/discard')[0]?.body).toEqual({
+      reason: 'Wrong person',
+      rowVersion: 1,
+    });
+  });
+
+  it('keeps templates: lists them, adds one from example terms, and switches one off', async () => {
+    const { calls } = open(
+      agHandlers(undefined, {
+        'POST /api/agreement-templates': () =>
+          jsonResponse(template({ id: 't2', name: 'Casual staff' }), 201),
+        [`PATCH /api/agreement-templates/${TEMPLATE_ID}`]: () =>
+          jsonResponse(template({ isActive: false })),
+      }),
+    );
+    await tab('Agreements');
+    await userEvent.click(await screen.findByRole('button', { name: 'Templates' }));
+    const list = await screen.findByRole('dialog', { name: 'Agreement templates' });
+    const table = await within(list).findByRole('table', { name: 'Templates' });
+    expect(within(table).getByText('Standard terms')).toBeInTheDocument();
+    await userEvent.click(
+      within(list).getByRole('button', { name: 'Switch off template Standard terms' }),
+    );
+    expect(await screen.findByText('Template Standard terms switched off')).toBeInTheDocument();
+    expect(sent(calls, `PATCH /api/agreement-templates/${TEMPLATE_ID}`)[0]?.body).toEqual({
+      isActive: false,
+      rowVersion: 1,
+    });
+    await userEvent.click(within(list).getByRole('button', { name: 'New template' }));
+    const form = await screen.findByRole('dialog', { name: 'New template' });
+    await userEvent.type(within(form).getByLabelText('Name of the template'), 'Casual staff');
+    await userEvent.click(within(form).getByRole('button', { name: 'Start from example terms' }));
+    expect((within(form).getByLabelText('Terms and rules') as HTMLTextAreaElement).value).toContain(
+      '{{employee_name}}',
+    );
+    await userEvent.click(within(form).getByRole('button', { name: 'Save template' }));
+    expect(await screen.findByText('Template Casual staff added')).toBeInTheDocument();
+    expect(sent(calls, 'POST /api/agreement-templates')[0]?.body).toMatchObject({
+      name: 'Casual staff',
+    });
+  });
+
+  it('lets an employee read and print their own signed agreement from their page', async () => {
+    const { calls } = open(
+      handlers(SELF, {
+        'GET /api/agreements/mine': () =>
+          jsonResponse({
+            items: [agreement({ status: 'SIGNED', signedOn: '2026-11-02', hasSignedCopy: true })],
+          }),
+        [`GET /api/agreements/${AG_ID}/pdf`]: pdf,
+      }),
+    );
+    const section = await screen.findByRole('region', { name: 'My agreement' });
+    expect(
+      within(section).getByText(/Employment agreement \(AG-111120261123\)/),
+    ).toBeInTheDocument();
+    await userEvent.click(within(section).getByRole('button', { name: 'Read AG-111120261123' }));
+    expect(await screen.findByRole('region', { name: 'Document preview' })).toBeInTheDocument();
+    expect(calls.some((call) => call.key === `GET /api/agreements/${AG_ID}/pdf`)).toBe(true);
+  });
+
+  it('shows an employee with no signed agreement nothing about agreements', async () => {
+    open(handlers(SELF, { 'GET /api/agreements/mine': () => jsonResponse({ items: [] }) }));
+    await screen.findByRole('tab', { name: 'My day' });
+    expect(screen.queryByRole('region', { name: 'My agreement' })).not.toBeInTheDocument();
   });
 });

@@ -8,6 +8,8 @@ import {
   LeaveSchema,
   MyAttendanceSchema,
   PayrollListResponseSchema,
+  PunchListResponseSchema,
+  PunchSchema,
   PayrollSchema,
   StaffCandidateListResponseSchema,
   StaffListResponseSchema,
@@ -20,6 +22,7 @@ import type {
   CancelLeaveRequest,
   CorrectAttendanceRequest,
   CreateLeaveRequest,
+  CreatePunchRequest,
   CreateStaffRequest,
   DeactivateStaffRequest,
   DepartmentOption,
@@ -31,14 +34,19 @@ import type {
   MyAttendance,
   Payroll,
   PayrollListResponse,
+  Punch,
+  PunchListResponse,
   ReactivateStaffRequest,
+  RemovePunchRequest,
   RejectLeaveRequest,
   Staff,
   StaffCandidate,
   StaffListResponse,
   UpdatePayrollRequest,
+  UpdatePunchRequest,
   UpdateStaffRequest,
 } from '@erp/contracts';
+import { z } from 'zod';
 import { ApiError } from '@/lib/api-client';
 import { api } from '@/lib/api';
 
@@ -152,3 +160,20 @@ export const updatePayroll = (id: string, values: UpdatePayrollRequest): Promise
   api.patch(`/payroll/${id}`, values, PayrollSchema);
 export const finalizePayroll = (id: string, values: FinalizePayrollRequest): Promise<Payroll> =>
   api.post(`/payroll/${id}/finalize`, values, PayrollSchema);
+
+/** The punches of one day. A manager sees everyone's; anyone else sees their own. */
+export function listPunches(date: string, staffId?: string): Promise<PunchListResponse> {
+  return api.get(`/attendance/punches?${query({ date, staffId })}`, PunchListResponseSchema);
+}
+
+export function createPunch(values: CreatePunchRequest): Promise<Punch> {
+  return api.post('/attendance/punches', values, PunchSchema);
+}
+
+export function updatePunch(id: string, values: UpdatePunchRequest): Promise<Punch> {
+  return api.patch(`/attendance/punches/${id}`, values, PunchSchema);
+}
+
+export async function removePunch(id: string, values: RemovePunchRequest): Promise<void> {
+  await api.post(`/attendance/punches/${id}/remove`, values, z.unknown());
+}

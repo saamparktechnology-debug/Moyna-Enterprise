@@ -11,6 +11,8 @@ import { PrismaModule } from './common/prisma/prisma.module.js';
 import { PurchasingModule } from './features/purchasing/purchasing.module.js';
 import { ReferenceModule } from './features/reference/reference.module.js';
 import { AuthModule } from './features/auth/auth.module.js';
+import { AssemblyModule } from './features/assembly/assembly.module.js';
+import { MessagingModule } from './features/messaging/messaging.module.js';
 import { BillingModule } from './features/billing/billing.module.js';
 import { BrokersModule } from './features/brokers/brokers.module.js';
 import { HrModule } from './features/hr/hr.module.js';
@@ -53,6 +55,8 @@ export class AppModule {
         ItemsModule,
         CustomersModule,
         BillingModule,
+        AssemblyModule,
+        MessagingModule,
         PaymentsModule,
         LeadsModule,
         BrokersModule,

@@ -12,12 +12,14 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "nodemailer": "^10.5.0",
     "pg": "^8.23.1",
     "pg-boss": "^12.37.0",
     "pino": "^10.4.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@vitest/coverage-v8": "^5.0.0",
     "vitest": "^5.0.0"

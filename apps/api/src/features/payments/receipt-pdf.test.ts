@@ -3,11 +3,20 @@ import { buildReceiptPdf } from './receipt-pdf.js';
 import type { ReceiptPdfData } from './receipt-pdf.js';
 
 const base: ReceiptPdfData = {
+  company: {
+    name: 'Moyna Enterprise',
+    proprietor: 'Balaram Das Gajendra Mahapatra',
+    address: 'Garsafat, Moyna, Purba Medinipur',
+    phone: '9564245909',
+    gstin: '19ANLPD2676F2ZU',
+    tagline: null,
+    terms: null,
+  },
   receiptNo: 'HQ/RCT/26-27/00007',
   paidOn: '2026-10-12',
-  branchName: 'Moyna Enterprise (HQ)',
   customerName: 'Ravi Kumar',
   customerPhone: '9000000001',
+  customerAddress: 'Murail, Purba Medinipur',
   modeName: 'Cash',
   reference: null,
   amount: '25000.00',
@@ -23,8 +32,12 @@ describe('buildReceiptPdf', () => {
     const out = text(base);
     expect(out).toContain('PAYMENT RECEIPT');
     expect(out).toContain('HQ/RCT/26-27/00007');
-    expect(out).toContain('Ravi Kumar');
-    expect(out).toContain('25000.00');
+    expect(out).toContain('Received from - Ravi Kumar');
+    expect(out).toContain('MOYNA ENTERPRISE');
+    expect(out).toContain('Address- Murail, Purba Medinipur');
+    expect(out).toContain('25,000.00');
+    expect(out).toContain('TWENTY FIVE THOUSAND ONLY');
+    expect(out).toContain('Customer Signature');
     expect(out).toContain('not a tax invoice');
     expect(out).not.toContain('ADVANCE RECEIPT');
   });
@@ -42,7 +55,7 @@ describe('buildReceiptPdf', () => {
     });
     expect(out).toContain('ADVANCE RECEIPT');
     expect(out).toContain('HQ/QT/26-27/00003');
-    expect(out).toContain('125000.00');
+    expect(out).toContain('1,25,000.00');
     expect(out).toContain('UPI 4411');
     expect(out).toContain('adjusted against the tax invoice');
   });

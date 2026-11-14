@@ -18,6 +18,7 @@ import { ProblemAlert } from '../payments/payments-shared';
 import { describeError } from '../purchasing/purchasing-shared';
 import type { Problem } from '../purchasing/purchasing-shared';
 import { STAFF_STATUS_TEXT } from './hr-shared';
+import { RosterDialog } from './roster-dialog';
 import { useCandidates, useDepartments, useHrMutations, useStaffList } from './use-hr';
 
 const DEFAULTS = { pageSize: 10, filters: { status: '', department: '' } };
@@ -37,7 +38,11 @@ function StaffFormDialog({ existing, onClose, onDone }: FormProps) {
   const [department, setDepartment] = useState(existing?.department ?? '');
   const [designation, setDesignation] = useState(existing?.designation ?? '');
   const [joinDate, setJoinDate] = useState(todayInIndia());
-  const [salary, setSalary] = useState(existing?.monthlySalary ?? '');
+  const [salaryType, setSalaryType] = useState<'FIXED' | 'DAILY'>(existing?.salaryType ?? 'FIXED');
+  const [salary, setSalary] = useState(
+    existing?.salaryType === 'DAILY' ? '' : (existing?.monthlySalary ?? ''),
+  );
+  const [dailyRate, setDailyRate] = useState(existing?.dailyRate ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<Problem | null>(null);
   const pending = createStaff.isPending || updateStaff.isPending;
@@ -50,7 +55,12 @@ function StaffFormDialog({ existing, onClose, onDone }: FormProps) {
       department: department || null,
       designation: designation.trim() || null,
       joinDate,
-      monthlySalary: salary.trim(),
+      salaryType,
+      ...(salaryType === 'FIXED'
+        ? { monthlySalary: salary.trim() }
+        : dailyRate.trim()
+          ? { dailyRate: dailyRate.trim() }
+          : {}),
     };
     if (existing === null) {
       const parsed = CreateStaffRequestSchema.safeParse(values);
@@ -76,7 +86,12 @@ function StaffFormDialog({ existing, onClose, onDone }: FormProps) {
             employeeCode: values.employeeCode,
             department: values.department,
             designation: values.designation,
-            monthlySalary: values.monthlySalary,
+            salaryType,
+            ...(salaryType === 'FIXED'
+              ? { monthlySalary: salary.trim() }
+              : dailyRate.trim()
+                ? { dailyRate: dailyRate.trim() }
+                : {}),
             rowVersion: (existing as Staff).rowVersion ?? 1,
           },
         });
@@ -94,7 +109,9 @@ function StaffFormDialog({ existing, onClose, onDone }: FormProps) {
     employeeCode !== (existing?.employeeCode ?? '') ||
     department !== (existing?.department ?? '') ||
     designation !== (existing?.designation ?? '') ||
-    salary !== (existing?.monthlySalary ?? '');
+    salaryType !== (existing?.salaryType ?? 'FIXED') ||
+    salary !== (existing?.salaryType === 'DAILY' ? '' : (existing?.monthlySalary ?? '')) ||
+    dailyRate !== (existing?.dailyRate ?? '');
 
   return (
     <FormDialog
@@ -180,16 +197,45 @@ function StaffFormDialog({ existing, onClose, onDone }: FormProps) {
             )}
           </FormField>
         ) : null}
-        <FormField label="Monthly salary" error={errors['monthlySalary']}>
+        <FormField label="Kind of salary" error={errors['salaryType']}>
           {(props) => (
-            <Input
+            <Select
               {...props}
-              inputMode="decimal"
-              value={salary}
-              onChange={(event) => setSalary(event.target.value)}
-            />
+              value={salaryType}
+              onChange={(event) => setSalaryType(event.target.value as 'FIXED' | 'DAILY')}
+            >
+              <option value="FIXED">Fixed monthly salary</option>
+              <option value="DAILY">Paid by the day (no work, no pay)</option>
+            </Select>
           )}
         </FormField>
+        {salaryType === 'FIXED' ? (
+          <FormField label="Monthly salary" error={errors['monthlySalary']}>
+            {(props) => (
+              <Input
+                {...props}
+                inputMode="decimal"
+                value={salary}
+                onChange={(event) => setSalary(event.target.value)}
+              />
+            )}
+          </FormField>
+        ) : (
+          <FormField
+            label="Daily rate"
+            error={errors['dailyRate']}
+            hint="For a full duty day. Counted in half-hours, overtime at the same rate"
+          >
+            {(props) => (
+              <Input
+                {...props}
+                inputMode="decimal"
+                value={dailyRate}
+                onChange={(event) => setDailyRate(event.target.value)}
+              />
+            )}
+          </FormField>
+        )}
       </div>
     </FormDialog>
   );
@@ -266,7 +312,11 @@ function StatusDialog({
   );
 }
 
-type Dialogs = { kind: 'form'; person: Staff | null } | { kind: 'status'; person: Staff } | null;
+type Dialogs =
+  | { kind: 'form'; person: Staff | null }
+  | { kind: 'status'; person: Staff }
+  | { kind: 'roster'; person: Staff }
+  | null;
 
 export function StaffTab() {
   const { can } = useAuth();
@@ -317,7 +367,23 @@ export function StaffTab() {
       cell: ({ row }) => row.original.departmentName ?? '—',
     },
     { accessorKey: 'joinDate', header: 'Joined', meta: { sortKey: 'joinDate' } },
-    { accessorKey: 'monthlySalary', header: 'Salary', meta: { align: 'right' } },
+    {
+      id: 'salary',
+      header: 'Salary',
+      meta: { align: 'right' },
+      cell: ({ row }) =>
+        row.original.salaryType === 'DAILY' ? (
+          <>
+            {row.original.dailyRate}
+            <span className="block text-xs text-muted-foreground">a day</span>
+          </>
+        ) : (
+          <>
+            {row.original.monthlySalary}
+            <span className="block text-xs text-muted-foreground">a month</span>
+          </>
+        ),
+    },
     {
       id: 'status',
       header: 'Status',
@@ -350,6 +416,16 @@ export function StaffTab() {
             >
               Edit
             </Button>
+            {can('settings.manage') ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-label={`Roster of ${row.original.fullName}`}
+                onClick={() => setDialog({ kind: 'roster', person: row.original })}
+              >
+                Roster
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="ghost"
@@ -461,6 +537,13 @@ export function StaffTab() {
       />
       {dialog?.kind === 'form' ? (
         <StaffFormDialog existing={dialog.person} onClose={() => setDialog(null)} onDone={done} />
+      ) : null}
+      {dialog?.kind === 'roster' ? (
+        <RosterDialog
+          person={dialog.person}
+          year={Number(todayInIndia().slice(0, 4))}
+          onClose={() => setDialog(null)}
+        />
       ) : null}
       {dialog?.kind === 'status' ? (
         <StatusDialog person={dialog.person} onClose={() => setDialog(null)} onDone={done} />

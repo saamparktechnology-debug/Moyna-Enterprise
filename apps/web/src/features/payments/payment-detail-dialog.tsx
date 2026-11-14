@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { useAuth } from '@/features/auth/auth-provider';
 import { describeError } from '../purchasing/purchasing-shared';
 import type { Problem } from '../purchasing/purchasing-shared';
+import { SendDocumentDialog } from '../messages/send-document-dialog';
 import { downloadReceipt } from './payments-api';
 import { ProblemAlert } from './payments-shared';
 import { usePayment, usePaymentMutations } from './use-payments';
@@ -25,6 +26,7 @@ export function PaymentDetailDialog({ paymentId, onClose, onDone }: Props) {
   const { apply, reverse } = usePaymentMutations();
   const receiptView = useFilePreview();
   const [reason, setReason] = useState('');
+  const [sendOpen, setSendOpen] = useState(false);
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const payment = query.data;
@@ -118,6 +120,18 @@ export function PaymentDetailDialog({ paymentId, onClose, onDone }: Props) {
                 >
                   View receipt
                 </Button>
+                {can('messages.send') ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="ml-2"
+                    disabled={busy}
+                    onClick={() => setSendOpen(true)}
+                  >
+                    Send to customer
+                  </Button>
+                ) : null}
               </div>
             ) : null}
             {receiptView.preview ? (
@@ -209,6 +223,14 @@ export function PaymentDetailDialog({ paymentId, onClose, onDone }: Props) {
             </div>
           </>
         )}
+        {sendOpen && payment ? (
+          <SendDocumentDialog
+            kind="RECEIPT"
+            id={payment.id}
+            label={payment.receiptNo}
+            onClose={() => setSendOpen(false)}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );

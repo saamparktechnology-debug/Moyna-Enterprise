@@ -111,9 +111,31 @@ export class DuesService {
       ]);
       const total = Number(counts[0]?.total ?? 0);
       const sums = totals[0];
+      // The latest promised date and whether a guarantor is noted, for the invoices on this page.
+      const ids = rows.map((row) => row.invoice_id);
+      const [promises, guarantors] = await Promise.all([
+        tx.duePromise.findMany({
+          where: { invoiceId: { in: ids } },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { invoiceId: true, promisedDate: true },
+        }),
+        tx.invoiceGuarantor.findMany({
+          where: { invoiceId: { in: ids } },
+          select: { invoiceId: true },
+        }),
+      ]);
+      const latest = new Map<string, string>();
+      for (const promise of promises)
+        if (!latest.has(promise.invoiceId))
+          latest.set(promise.invoiceId, promise.promisedDate.toISOString().slice(0, 10));
+      const guaranteed = new Set(guarantors.map((row) => row.invoiceId));
       return {
         ...buildPage(
-          rows.map((row) => toDueInvoice(row, today)),
+          rows.map((row) => ({
+            ...toDueInvoice(row, today),
+            nextPromisedDate: latest.get(row.invoice_id) ?? null,
+            hasGuarantor: guaranteed.has(row.invoice_id),
+          })),
           total,
           query,
         ),

@@ -25,6 +25,12 @@ const WorkerEnvSchema = z.object({
         .filter(Boolean),
     )
     .pipe(z.array(z.enum(['EMAIL', 'SMS', 'WHATSAPP']))),
+  /** Email through an SMTP server, for example Google: smtp.gmail.com with an app password. Without a user, email is only logged. */
+  SMTP_HOST: z.string().trim().min(1).default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+  SMTP_USER: z.string().trim().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  SMTP_FROM: z.string().trim().min(3).optional(),
   /** When the daily reminders run (cron, India time). */
   REMINDER_CRON: z.string().default('0 8 * * *'),
 });

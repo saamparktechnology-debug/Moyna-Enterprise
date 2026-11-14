@@ -178,6 +178,37 @@ describe('leads and follow-ups', () => {
       ).toBe(1);
     });
 
+    it('keeps an optional age in whole years, lets it be changed or cleared, and refuses a nonsense age', async () => {
+      const withAge = await newLead({ age: 34 });
+      expect(withAge.age).toBe(34);
+      expect((await newLead()).age).toBeNull();
+
+      const changed = await staffA.patch(`/leads/${withAge.id}`, {
+        age: 35,
+        rowVersion: withAge.rowVersion,
+      });
+      expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+      const afterChange = LeadSchema.parse(changed.body);
+      expect(afterChange.age).toBe(35);
+      expect((await fetchLead(withAge.id)).age).toBe(35);
+
+      const cleared = await staffA.patch(`/leads/${withAge.id}`, {
+        age: null,
+        rowVersion: afterChange.rowVersion,
+      });
+      expect(LeadSchema.parse(cleared.body).age).toBeNull();
+
+      for (const age of [0, -3, 121, 12.5, '40']) {
+        const refused = await staffA.post('/leads', {
+          name: 'Age Test',
+          phone: `9${(counter += 1).toString().padStart(9, '0')}`,
+          source: 'WALK_IN',
+          age,
+        });
+        expect(refused.status, String(age)).toBe(400);
+      }
+    });
+
     it('refuses a bad phone, a short name, an unknown source and an unknown assignee', async () => {
       const base = { name: 'Asha Rao', phone: phone(), source: 'WALK_IN' };
       expect((await staffA.post('/leads', { ...base, phone: '12345' })).status).toBe(400);

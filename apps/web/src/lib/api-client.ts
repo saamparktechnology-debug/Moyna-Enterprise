@@ -23,6 +23,8 @@ export interface ApiClient {
   post<S extends z.ZodType>(path: string, body: unknown, schema: S): Promise<z.output<S>>;
   put<S extends z.ZodType>(path: string, body: unknown, schema: S): Promise<z.output<S>>;
   patch<S extends z.ZodType>(path: string, body: unknown, schema: S): Promise<z.output<S>>;
+  /** Removes something, and returns what is left. */
+  delete<S extends z.ZodType>(path: string, schema: S): Promise<z.output<S>>;
   /** Sends a file as the request body (a KYC document, for example). Extra headers carry small details about it. */
   upload<S extends z.ZodType>(
     path: string,
@@ -93,7 +95,7 @@ export function createApiClient({
   }
 
   async function send<S extends z.ZodType>(
-    method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
     body: unknown,
     schema: S,
@@ -135,6 +137,7 @@ export function createApiClient({
     post: (path, body, schema) => send('POST', path, body, schema),
     put: (path, body, schema) => send('PUT', path, body, schema),
     patch: (path, body, schema) => send('PATCH', path, body, schema),
+    delete: (path, schema) => send('DELETE', path, undefined, schema),
     async upload(path, file, headers, schema) {
       const response = await transfer(path, {
         method: 'POST',

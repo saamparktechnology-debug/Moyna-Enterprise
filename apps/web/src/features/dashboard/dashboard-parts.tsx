@@ -4,7 +4,6 @@ import { AlertTriangle } from 'lucide-react';
 import { SimpleTable } from '@/components/data-table/simple-table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { s } from 'node_modules/vitest/dist/chunks/config.d.BxjInJat';
 
 const rupees = new Intl.NumberFormat('en-IN', {
   style: 'currency',

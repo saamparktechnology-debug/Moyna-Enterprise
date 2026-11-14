@@ -28,6 +28,7 @@ export function testEnv(overrides: Record<string, string> = {}): Env {
     LOG_LEVEL: 'silent',
     DATABASE_URL: TEST_APP_DATABASE_URL,
     SESSION_SECRET: 'test-session-secret-0123456789-abcdefghij',
+    MESSAGING_MODE: 'fake',
     ...overrides,
   });
 }

@@ -4,6 +4,8 @@ import {
   CustomerDueListResponseSchema,
   CustomerLedgerSchema,
   DueListResponseSchema,
+  DuePromiseListResponseSchema,
+  GuarantorResponseSchema,
   PaymentListResponseSchema,
   PaymentSchema,
   RefundSchema,
@@ -15,9 +17,13 @@ import type {
   CustomerDueListResponse,
   CustomerLedger,
   DueListResponse,
+  DuePromiseListResponse,
+  GuarantorResponse,
   Payment,
   PaymentListResponse,
+  CreateDuePromiseRequest,
   RecordPaymentRequest,
+  SetGuarantorRequest,
   Refund,
   ReversePaymentRequest,
 } from '@erp/contracts';
@@ -125,4 +131,49 @@ export function getCustomerCredit(customerId: string, branchId: string): Promise
 
 export function payRefund(values: CreateRefundRequest): Promise<Refund> {
   return api.post('/refunds', values, RefundSchema);
+}
+
+const dueBase = (invoiceId: string) => `/dues/invoices/${invoiceId}`;
+
+export function listPromises(invoiceId: string): Promise<DuePromiseListResponse> {
+  return api.get(`${dueBase(invoiceId)}/promises`, DuePromiseListResponseSchema);
+}
+
+export function addPromise(
+  invoiceId: string,
+  values: CreateDuePromiseRequest,
+): Promise<DuePromiseListResponse> {
+  return api.post(`${dueBase(invoiceId)}/promises`, values, DuePromiseListResponseSchema);
+}
+
+export function getGuarantor(invoiceId: string): Promise<GuarantorResponse> {
+  return api.get(`${dueBase(invoiceId)}/guarantor`, GuarantorResponseSchema);
+}
+
+export function setGuarantor(
+  invoiceId: string,
+  values: SetGuarantorRequest,
+): Promise<GuarantorResponse> {
+  return api.put(`${dueBase(invoiceId)}/guarantor`, values, GuarantorResponseSchema);
+}
+
+export function removeGuarantor(invoiceId: string): Promise<GuarantorResponse> {
+  return api.delete(`${dueBase(invoiceId)}/guarantor`, GuarantorResponseSchema);
+}
+
+export function uploadGuarantorKyc(invoiceId: string, file: File): Promise<GuarantorResponse> {
+  return api.upload(
+    `${dueBase(invoiceId)}/guarantor/kyc?${query({ fileName: file.name })}`,
+    file,
+    {},
+    GuarantorResponseSchema,
+  );
+}
+
+export function removeGuarantorKyc(invoiceId: string): Promise<GuarantorResponse> {
+  return api.delete(`${dueBase(invoiceId)}/guarantor/kyc`, GuarantorResponseSchema);
+}
+
+export function downloadGuarantorKyc(invoiceId: string): Promise<Blob> {
+  return api.download(`${dueBase(invoiceId)}/guarantor/kyc`);
 }

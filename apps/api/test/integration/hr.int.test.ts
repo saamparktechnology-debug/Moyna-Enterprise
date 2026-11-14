@@ -154,6 +154,12 @@ describe('staff and HR', () => {
 
   beforeAll(async () => {
     w = await createAuthWorld(owner);
+    // These tests count calendar days, so they run without a weekly off (the default is Sunday).
+    await owner.appSetting.upsert({
+      where: { key: 'company.weekly_off_days' },
+      update: { value: 'NONE' },
+      create: { key: 'company.weekly_off_days', value: 'NONE' },
+    });
     app = await createTestApp();
     superAdmin = await loggedIn(app, 'superadmin', SUPER_PASSWORD);
     adminA = await loggedIn(app, 'admin_a');
@@ -582,18 +588,20 @@ describe('staff and HR', () => {
       expect(done.hoursWorked).toMatch(/^\d+\.\d{2}$/);
     });
 
-    it('refuses to check in twice, to check out without checking in, and to check in again after a finished day', async () => {
+    it('refuses to punch in twice in a row and to punch out without punching in, but lets a finished punch be followed by another', async () => {
       const p = await person();
       expect((await p.client.post('/attendance/check-out', {})).status).toBe(422);
       expect((await p.client.post('/attendance/check-in', {})).status).toBe(201);
       const twice = await p.client.post('/attendance/check-in', {});
       expect(twice.status).toBe(409);
-      expect(JSON.stringify(twice.body.details)).toContain('Check out');
+      expect(JSON.stringify(twice.body.details)).toContain('Punch out');
       await p.client.post('/attendance/check-out', {});
       const again = await p.client.post('/attendance/check-in', {});
-      expect(again.status).toBe(409);
+      expect(again.status, JSON.stringify(again.body)).toBe(201);
+      expect((await p.client.post('/attendance/check-out', {})).status).toBe(200);
       expect((await p.client.post('/attendance/check-out', {})).status).toBe(422);
       expect(await owner.attendance.count({ where: { staffId: p.staffId } })).toBe(1);
+      expect(await owner.attendancePunch.count({ where: { staffId: p.staffId } })).toBe(2);
     });
 
     it('takes one record when the same person checks in many times at once', async () => {

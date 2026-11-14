@@ -42,9 +42,9 @@ describe('report export query', () => {
 });
 
 describe('report catalog constants', () => {
-  it('names all sixteen reports once, and caps a download', () => {
-    expect(REPORT_CODES).toHaveLength(16);
-    expect(new Set(REPORT_CODES).size).toBe(16);
+  it('names all seventeen reports once, and caps a download', () => {
+    expect(REPORT_CODES).toHaveLength(17);
+    expect(new Set(REPORT_CODES).size).toBe(17);
     expect(REPORT_EXPORT_MAX_ROWS).toBe(20_000);
   });
 });

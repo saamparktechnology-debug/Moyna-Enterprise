@@ -20,6 +20,7 @@ export const REPORT_CODES = [
   'BRANCH_PERFORMANCE',
   'BATTERY_EXPIRY',
   'DAMAGED_SHORT_STOCK',
+  'SALES_BY_CATEGORY_BROKER',
 ] as const;
 export const ReportCodeSchema = z.enum(REPORT_CODES);
 export type ReportCode = z.infer<typeof ReportCodeSchema>;

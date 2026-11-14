@@ -37,6 +37,7 @@ import type { Money } from '../../common/money/money.js';
 import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
+import { loadCompanyProfile } from '../settings/company-profile.js';
 import { buildCreditNotePdf } from './credit-note-pdf.js';
 import { CommissionsService } from '../brokers/commissions.service.js';
 import { StockPostingService } from '../stock/stock-posting.service.js';
@@ -147,11 +148,21 @@ export class CreditNotesService {
       const [invoice, branch] = await Promise.all([
         tx.invoice.findUniqueOrThrow({
           where: { id: row.invoiceId },
-          select: { type: true, branchGstin: true, customerGstin: true, issuedOn: true },
+          select: {
+            type: true,
+            branchGstin: true,
+            customerGstin: true,
+            issuedOn: true,
+            customer: { select: { phone: true, address: true } },
+          },
         }),
         tx.branch.findUniqueOrThrow({ where: { id: row.branchId }, select: { name: true } }),
       ]);
+      const company = await loadCompanyProfile(tx, branch.name);
       const body = buildCreditNotePdf(note, {
+        company,
+        customerPhone: invoice.customer.phone,
+        customerAddress: invoice.customer.address,
         branchName: branch.name,
         branchGstin: invoice.branchGstin,
         customerGstin: invoice.customerGstin,

@@ -137,7 +137,6 @@ describe('billing and invoices', () => {
   };
   const cancel = (client: TestClient, invoice: Invoice, reason = 'Wrong customer') =>
     client.post(`/invoices/${invoice.id}/cancel`, { rowVersion: invoice.rowVersion, reason });
-  const nextNumber = (no: string): number => Number(no.slice(no.lastIndexOf('/') + 1));
 
   beforeAll(async () => {
     w = await createAuthWorld(owner);
@@ -403,7 +402,7 @@ describe('billing and invoices', () => {
       const item = await newItem({ tax: '18' });
       await seedPlain(item.id, w.branchA, 10);
       const invoice = await sell(staffA, [line(item.id, { qty: 3 })]);
-      expect(invoice.invoiceNo).toMatch(/^AAG\/\d{4}\/\d{5}$/);
+      expect(invoice.invoiceNo).toMatch(/^ME-\d{12}$/);
       expect(invoice).toMatchObject({
         status: 'ISSUED',
         issuedOn: todayInIndia(),
@@ -432,11 +431,11 @@ describe('billing and invoices', () => {
       ).toBe(1);
     });
 
-    it('uses a separate number series for invoices without GST', async () => {
+    it('numbers an invoice without GST the same way, with no GSTIN', async () => {
       const item = await newItem();
       await seedPlain(item.id, w.branchA, 3);
       const plain = await sell(staffA, [line(item.id)], { type: 'NON_GST' });
-      expect(plain.invoiceNo).toMatch(/^AAN\/\d{4}\//);
+      expect(plain.invoiceNo).toMatch(/^ME-\d{12}$/);
       expect(plain.branchGstin).toBeNull();
     });
 
@@ -480,11 +479,12 @@ describe('billing and invoices', () => {
       await seedPlain(item.id, w.branchA, 2);
       const second = await issue(staffA, failing);
       expect(second.status).toBe(200);
-      expect(nextNumber(second.body.invoiceNo)).toBe(nextNumber(first.invoiceNo ?? '') + 1);
+      expect(second.body.invoiceNo).toMatch(/^ME-\d{12}$/);
+      expect(second.body.invoiceNo).not.toBe(first.invoiceNo);
       expect(await drift(other.id)).toEqual([]);
     });
 
-    it('gives consecutive numbers with no gaps when many invoices are issued at once', async () => {
+    it('gives every invoice its own number when many are issued at once', async () => {
       const item = await newItem();
       await seedPlain(item.id, w.branchA, 20);
       const drafts = await Promise.all(
@@ -492,9 +492,9 @@ describe('billing and invoices', () => {
       );
       const results = await Promise.all(drafts.map((d) => issue(staffA, d)));
       expect(results.every((r) => r.status === 200)).toBe(true);
-      const numbers = results.map((r) => nextNumber(r.body.invoiceNo)).sort((a, b) => a - b);
+      const numbers = results.map((r) => String(r.body.invoiceNo));
       expect(new Set(numbers).size).toBe(8);
-      expect(numbers.at(-1)! - numbers[0]!).toBe(7);
+      expect(numbers.every((no) => /^ME-\d{12}$/.test(no))).toBe(true);
       expect(await quantity(item.id, w.branchA)).toBe(12);
       expect(await drift(item.id)).toEqual([]);
     });
@@ -880,7 +880,9 @@ describe('billing and invoices', () => {
       );
       const body = (response.body as Buffer).toString('latin1');
       expect(body.startsWith('%PDF-')).toBe(true);
-      expect(body).toContain('TAX INVOICE');
+      expect(body).toContain('GST INVOICE');
+      expect(body).toContain('Total Invoice RS.');
+      expect(body).toContain('Customer Signature');
     });
 
     it('keeps each branch to its own invoices, and lets a Super Admin see them all', async () => {

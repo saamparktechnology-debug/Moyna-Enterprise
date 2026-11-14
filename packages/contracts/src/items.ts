@@ -120,6 +120,8 @@ export const ItemSchema = z.object({
   isActive: z.boolean(),
   /** The real purchase price. Filled in only for a Super Admin; everyone else gets `null`. */
   actualPurchasePrice: z.string().nullable().optional(),
+  /** The price this item is sold at, set when it is assembled. Billing starts from it. */
+  sellingPrice: z.string().nullable().optional(),
   /** The purchase price Admin and staff are shown. A Super Admin sees it next to the real one. */
   displayPurchasePrice: z.string().nullable().optional(),
   barcodes: z.array(ItemBarcodeSchema),
@@ -235,3 +237,50 @@ export const HsnListQuerySchema = PaginationQuerySchema.extend({
 });
 export const HsnListResponseSchema = paginatedSchema(HsnCodeSchema);
 export type HsnListResponse = z.infer<typeof HsnListResponseSchema>;
+
+// ---------- managing the HSN list ----------
+
+/** An HSN code as the people who keep the list see it: whether it is switched on and how many items use it. */
+export const ManagedHsnSchema = z.object({
+  code: z.string(),
+  description: z.string(),
+  gstRate: z.string().nullable(),
+  isActive: z.boolean(),
+  usedBy: z.number().int(),
+  rowVersion: z.number().int(),
+});
+export type ManagedHsn = z.infer<typeof ManagedHsnSchema>;
+export const ManagedHsnQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(100).optional(),
+  status: z.enum(['all', 'active', 'inactive']).default('all'),
+});
+export type ManagedHsnQuery = z.input<typeof ManagedHsnQuerySchema>;
+export const ManagedHsnListResponseSchema = paginatedSchema(ManagedHsnSchema);
+export type ManagedHsnListResponse = z.infer<typeof ManagedHsnListResponseSchema>;
+
+const HsnDescriptionSchema = z
+  .string()
+  .trim()
+  .min(2, 'Enter at least 2 characters')
+  .max(200, 'Use at most 200 characters');
+
+export const CreateHsnRequestSchema = z.object({
+  code: HsnCodeValueSchema,
+  description: HsnDescriptionSchema,
+  /** The GST rate this code usually carries, if it always has the same one. */
+  gstRate: GstRateValueSchema.nullable().default(null),
+});
+export type CreateHsnRequest = z.input<typeof CreateHsnRequestSchema>;
+
+/** The code itself never changes: add a new one instead. Switching a code off keeps it on the items that use it. */
+export const UpdateHsnRequestSchema = z
+  .object({
+    description: HsnDescriptionSchema.optional(),
+    gstRate: GstRateValueSchema.nullable().optional(),
+    isActive: z.boolean().optional(),
+    rowVersion: z.number().int().min(1),
+  })
+  .refine((value) => Object.keys(value).some((key) => key !== 'rowVersion'), {
+    message: 'Change at least one field',
+  });
+export type UpdateHsnRequest = z.input<typeof UpdateHsnRequestSchema>;

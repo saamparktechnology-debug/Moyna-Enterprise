@@ -63,12 +63,14 @@ describe('buildCreditNotePdf', () => {
     expect(out.trimEnd().endsWith('%%EOF')).toBe(true);
     for (const expected of [
       'CREDIT NOTE',
-      'Credit note no: HQ/CN/26-27/00001',
-      'Date: 2026-10-09',
-      'Against invoice: HQ/GI/26-27/00007 of 2026-10-01',
-      'Ravi Kumar',
+      'Credit Note No:- HQ/CN/26-27/00001',
+      'Date:- 2026-10-09',
+      'Against invoice:- HQ/GI/26-27/00007',
+      'Invoice date:- 2026-10-01',
+      'Credited to - Ravi Kumar',
       'Reason: Customer returned a damaged unit',
-      'GSTIN: 27AAPFU0939F1ZV',
+      'GST IN: 27AAPFU0939F1ZV',
+      'For HEAD OFFICE',
       'CGST',
       'SGST',
       'CREDIT \\(Rs\\)',
@@ -109,7 +111,7 @@ describe('buildCreditNotePdf', () => {
     );
     expect(pending).toContain('PENDING - this credit note is not valid until it is approved');
     expect(pending).toContain('not yet numbered');
-    expect(pending).toContain('Date: -');
+    expect(pending).toContain('Date:- -');
     expect(
       text(buildCreditNotePdf({ ...base, status: 'REJECTED', creditNoteNo: null }, context)),
     ).toContain('REJECTED - this credit note is not valid');

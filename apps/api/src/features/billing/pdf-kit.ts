@@ -101,15 +101,76 @@ export function fit(text: string, maxWidth: number, size: number): string {
   return `${cut}...`;
 }
 
+/** An amount with Indian digit grouping (1,50,476.19). A leading + or - is kept. */
+export function inr(amount: string): string {
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(amount.trim());
+  if (!match) return amount;
+  const [, sign = '', whole = '', fraction] = match;
+  const tail = whole.slice(-3);
+  const head = whole.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+  return `${sign}${head ? `${head},${tail}` : tail}${fraction === undefined ? '' : `.${fraction}`}`;
+}
+
+/** The amount in words as printed on an Indian invoice: ONE LAKH FIFTY EIGHT THOUSAND ONLY. */
+export function wordsUpper(amount: string): string {
+  return amountInWords(amount)
+    .replace(/^Rupees /, '')
+    .toUpperCase();
+}
+
+/** Splits text into lines no wider than `maxWidth` at the given size. */
+export function wrap(text: string, maxWidth: number, size: number, bold = false): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = current ? `${current} ${word}` : word;
+    if (current && textWidth(next, size) * (bold ? 1.08 : 1) > maxWidth) {
+      lines.push(current);
+      current = word;
+    } else current = next;
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+export type Rgb = readonly [number, number, number];
+export type PdfFont = 'F1' | 'F2' | 'F3';
+
+/** A rough width for capital letters in Times Bold, enough to centre a heading. */
+export function serifWidth(text: string, size: number): number {
+  return text.length * size * 0.7;
+}
+
 export class Page {
   private readonly commands: string[] = [];
+  /** Text in a chosen font (F1 Helvetica, F2 Helvetica Bold, F3 Times Bold) and colour. */
+  styled(x: number, y: number, value: string, size: number, font: PdfFont, rgb?: Rgb): void {
+    const colour = rgb ? `${rgb[0]} ${rgb[1]} ${rgb[2]} rg ` : '';
+    this.commands.push(
+      `${colour}BT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${clean(value)}) Tj ET${rgb ? ' 0 g' : ''}`,
+    );
+  }
+  /** A box with rounded corners. */
+  roundBox(x: number, y: number, w: number, h: number, r: number, width = 0.8): void {
+    const k = r * 0.5523;
+    this.commands.push(
+      `${width} w ${x + r} ${y} m ${x + w - r} ${y} l ${x + w - r + k} ${y} ${x + w} ${y + r - k} ${x + w} ${y + r} c ` +
+        `${x + w} ${y + h - r} l ${x + w} ${y + h - r + k} ${x + w - r + k} ${y + h} ${x + w - r} ${y + h} c ` +
+        `${x + r} ${y + h} l ${x + r - k} ${y + h} ${x} ${y + h - r + k} ${x} ${y + h - r} c ` +
+        `${x} ${y + r} l ${x} ${y + r - k} ${x + r - k} ${y} ${x + r} ${y} c S`,
+    );
+  }
+  /** A box with a line of a chosen width. */
+  frame(x: number, y: number, w: number, h: number, width = 0.5): void {
+    this.commands.push(`${width} w ${x} ${y} ${w} ${h} re S`);
+  }
   text(x: number, y: number, value: string, size = 9, bold = false): void {
     this.commands.push(
       `BT /${bold ? 'F2' : 'F1'} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${clean(value)}) Tj ET`,
     );
   }
   right(rightX: number, y: number, value: string, size = 9, bold = false): void {
-    this.text(rightX - textWidth(value, size), y, value, size, bold);
+    this.text(rightX - textWidth(value, size) * (bold ? 1.1 : 1), y, value, size, bold);
   }
   centre(y: number, value: string, size: number, bold = false): void {
     this.text((PAGE_WIDTH - textWidth(value, size)) / 2, y, value, size, bold);
@@ -145,16 +206,19 @@ export function assemblePdf(pages: Page[]): Buffer {
   // ---- assemble the file ----
   const objects: string[] = [];
   objects.push('<< /Type /Catalog /Pages 2 0 R >>');
-  const kids = pages.map((_, index) => `${5 + index * 2} 0 R`).join(' ');
+  const kids = pages.map((_, index) => `${6 + index * 2} 0 R`).join(' ');
   objects.push(`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`);
   objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
   objects.push(
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
   );
+  objects.push(
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>',
+  );
   pages.forEach((page, index) => {
     const content = page.content();
     objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + index * 2} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${7 + index * 2} 0 R >>`,
     );
     objects.push(
       `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`,

@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/page-header';
 import { Select } from '@/components/select-field';
 import { StatusBadge } from '@/components/status-badge';
 import { toast } from '@/components/toast';
+import { describeError } from '../purchasing/purchasing-shared';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/features/auth/auth-provider';
 import { isFiltered, useListParams, useSearchBox } from '@/lib/use-list-params';
@@ -19,7 +20,8 @@ import { ItemStatusDialog } from './item-status-dialog';
 import { LabelDialog } from './label-dialog';
 import { ScanLookup } from './scan-lookup';
 import type { ItemListParams } from './items-api';
-import { useCategories, useItems } from './use-items';
+import { HsnCodesDialog } from './hsn-codes-dialog';
+import { useCategories, useItemMutations, useItems } from './use-items';
 
 const DEFAULTS = {
   pageSize: 10,
@@ -45,6 +47,16 @@ export function ItemsPage() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [selected, setSelected] = useState<Map<string, Item>>(new Map());
   const [labelTarget, setLabelTarget] = useState<Item | null>(null);
+  const [hsnOpen, setHsnOpen] = useState(false);
+  const { addBarcode } = useItemMutations();
+  // An item with no barcode gets one made for it, and its label opens ready to print.
+  const createAndPrint = async (item: Item) => {
+    try {
+      setLabelTarget(await addBarcode.mutateAsync({ id: item.id, values: { generate: true } }));
+    } catch (error) {
+      toast.error(describeError(error).message ?? 'Could not create the barcode');
+    }
+  };
   const categories = useCategories();
   const categoryId = params.filters['category'] ?? '';
   const status = params.filters['status'] as ItemListParams['status'];
@@ -149,6 +161,12 @@ export function ItemsPage() {
       },
     },
     {
+      id: 'sellingPrice',
+      header: 'Selling price',
+      meta: { align: 'right', className: 'tabular' },
+      cell: ({ row }) => row.original.sellingPrice ?? '—',
+    },
+    {
       id: 'barcode',
       header: 'Barcode',
       meta: { className: 'font-mono text-xs' },
@@ -184,7 +202,19 @@ export function ItemsPage() {
             >
               Print label
             </Button>
-          ) : null}
+          ) : (
+            <Can permission="items.manage">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={addBarcode.isPending}
+                aria-label={`Create a barcode and print a label for ${row.original.itemCode}`}
+                onClick={() => void createAndPrint(row.original)}
+              >
+                Create barcode
+              </Button>
+            </Can>
+          )}
           <Can permission="items.manage">
             <Button
               variant="ghost"
@@ -239,7 +269,7 @@ export function ItemsPage() {
     <PageContainer>
       <PageHeader
         title="Items"
-        description="Products, spare parts and batteries, with their barcodes and GST rates."
+        description="Products, spare parts and batteries, with their barcodes and GST rates. To print barcode labels, press Print label on an item, or tick items and press Print labels."
         actions={
           <>
             <Button
@@ -250,6 +280,9 @@ export function ItemsPage() {
               Print labels ({selected.size})
             </Button>
             <Can permission="items.manage">
+              <Button variant="secondary" onClick={() => setHsnOpen(true)}>
+                HSN codes
+              </Button>
               <Button variant="secondary" onClick={() => setCategoriesOpen(true)}>
                 Categories
               </Button>
@@ -353,6 +386,7 @@ export function ItemsPage() {
       {labelsOpen ? (
         <LabelDialog items={[...selected.values()]} onClose={() => setLabelsOpen(false)} />
       ) : null}
+      {hsnOpen ? <HsnCodesDialog onClose={() => setHsnOpen(false)} /> : null}
       {labelTarget ? (
         <LabelDialog items={[labelTarget]} autoPrepare onClose={() => setLabelTarget(null)} />
       ) : null}

@@ -9,8 +9,10 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { useAuth } from '@/features/auth/auth-provider';
 import { describeError } from '../purchasing/purchasing-shared';
 import type { Problem } from '../purchasing/purchasing-shared';
+import { SendDocumentDialog } from '../messages/send-document-dialog';
 import { downloadInvoicePdf } from './billing-api';
 import { GiftPhotoPanel } from './gift-photo-panel';
+import { PrintFooter, PrintLetterhead } from './invoice-print';
 import { STATUS_TEXT, TYPE_TEXT } from './billing-shared';
 import { useInvoice, useInvoiceMutations } from './use-billing';
 
@@ -38,6 +40,7 @@ export function InvoiceDetailDialog({
   const { issue, discard, cancel, reissue } = useInvoiceMutations();
   const [problem, setProblem] = useState<Problem | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const [sendOpen, setSendOpen] = useState(false);
   const [unpaidReason, setUnpaidReason] = useState('');
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState<string | null>(null);
@@ -76,6 +79,7 @@ export function InvoiceDetailDialog({
   return (
     <Dialog open onOpenChange={(next) => (next || busy ? undefined : onClose())}>
       <DialogContent size="xl" className="print-document">
+        {invoice ? <PrintLetterhead invoice={invoice} /> : null}
         <DialogTitle>{invoice ? (invoice.invoiceNo ?? 'Draft invoice') : 'Invoice'}</DialogTitle>
         <DialogDescription>
           {invoice
@@ -117,6 +121,18 @@ export function InvoiceDetailDialog({
                 {invoice.customerName}
                 {invoice.customerGstin ? ` · GSTIN ${invoice.customerGstin}` : ''}
               </dd>
+              {invoice.customerPhone ? (
+                <>
+                  <dt className="text-muted-foreground">Mobile</dt>
+                  <dd>{invoice.customerPhone}</dd>
+                </>
+              ) : null}
+              {invoice.customerAddress ? (
+                <>
+                  <dt className="text-muted-foreground">Address</dt>
+                  <dd>{invoice.customerAddress}</dd>
+                </>
+              ) : null}
               {invoice.quotationNo ? (
                 <>
                   <dt className="text-muted-foreground">Quotation</dt>
@@ -264,6 +280,7 @@ export function InvoiceDetailDialog({
               invoice={invoice}
               editable={invoice.status === 'DRAFT' && can('invoices.create')}
             />
+            <PrintFooter invoice={invoice} />
 
             {invoice.status === 'DRAFT' && can('invoices.create') ? (
               <div className="mt-4 max-w-md">
@@ -327,6 +344,16 @@ export function InvoiceDetailDialog({
               >
                 Download PDF
               </Button>
+              {invoice.status === 'ISSUED' && can('messages.send') ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSendOpen(true)}
+                  disabled={busy}
+                >
+                  Send to customer
+                </Button>
+              ) : null}
               {invoice.status === 'DRAFT' && can('invoices.create') ? (
                 <>
                   {confirmDiscard ? (
@@ -444,6 +471,14 @@ export function InvoiceDetailDialog({
             </div>
           </>
         )}
+        {sendOpen && invoice ? (
+          <SendDocumentDialog
+            kind="INVOICE"
+            id={invoice.id}
+            label={invoice.invoiceNo ?? ''}
+            onClose={() => setSendOpen(false)}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );

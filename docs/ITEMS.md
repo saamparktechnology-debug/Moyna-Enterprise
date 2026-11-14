@@ -40,3 +40,11 @@ Check constraints on item codes and barcodes, a case-insensitive unique index on
 
 - Any item row with a barcode has a **Print label** button (shown to everyone who may view items). It opens the label dialog with one label already prepared; change the number of copies if needed and press **Print**. Several items can still be ticked and printed together with "Print labels (n)".
 - **Print** prepares the labels first if that has not been done, and prints once they are on the page. Changing the copies after preparing clears the prepared labels, so a printout always matches the copies shown. Labels are 50 x 25 mm; barcodes in the EAN-13 format are drawn and any other barcode is printed as text. Preparing labels is recorded in the audit log.
+
+## Creating a barcode and printing it (chunk 11)
+
+Every item row without a barcode has **Create barcode** (for those who may manage items): it makes the next barcode for the item and opens its label, ready to print. Items that already have a barcode have **Print label**. Several items can also be ticked and printed together with **Print labels**.
+
+## The HSN list (chunk 11)
+
+**Items, HSN codes** (for those who may manage items) opens the list of HSN codes: search it, **Add an HSN code** (4 to 8 digits, a description, and the GST rate it usually carries), **Change** the description or rate (the code itself never changes), or **Switch off** a code, which keeps it on the items that have it but offers it to no new item. A code typed on an item or on a bill that is not in the list is added to it automatically. The GST rate here is only a starting point; the biller chooses the rate on each bill.

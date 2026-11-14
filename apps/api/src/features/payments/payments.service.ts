@@ -35,6 +35,7 @@ import type { TxClient } from '../../common/prisma/scoped-prisma.service.js';
 import { TransactionService } from '../../common/prisma/transaction.service.js';
 import type { AuthContext } from '../auth/auth.types.js';
 import { planAutomaticAllocation } from './allocation.js';
+import { loadCompanyProfile } from '../settings/company-profile.js';
 import { buildReceiptPdf } from './receipt-pdf.js';
 import type { ReceiptPdfData } from './receipt-pdf.js';
 import type { PlannedAllocation } from './allocation.js';
@@ -121,7 +122,7 @@ export class PaymentsService {
         where: { id },
         include: {
           branch: { select: { name: true } },
-          customer: { select: { name: true, phone: true } },
+          customer: { select: { name: true, phone: true, address: true } },
           paymentMode: { select: { name: true } },
           reversal: true,
           quotation: { select: { quotationNo: true, total: true } },
@@ -144,11 +145,12 @@ export class PaymentsService {
         };
       }
       const body = buildReceiptPdf({
+        company: await loadCompanyProfile(tx, row.branch.name),
         receiptNo: row.receiptNo,
         paidOn: row.paidOn.toISOString().slice(0, 10),
-        branchName: row.branch.name,
         customerName: row.customer.name,
         customerPhone: row.customer.phone,
+        customerAddress: row.customer.address,
         modeName: row.paymentMode.name,
         reference: row.reference,
         amount: row.amount.toFixed(2),

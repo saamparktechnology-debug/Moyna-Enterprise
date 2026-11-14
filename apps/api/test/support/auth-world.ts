@@ -102,6 +102,10 @@ export class TestClient {
   patch(path: string, body: object = {}): request.Test {
     return this.agent.patch(path).set('Origin', ORIGIN).set('X-CSRF-Token', this.csrf).send(body);
   }
+
+  delete(path: string): request.Test {
+    return this.agent.delete(path).set('Origin', ORIGIN).set('X-CSRF-Token', this.csrf);
+  }
 }
 
 export async function loggedIn(

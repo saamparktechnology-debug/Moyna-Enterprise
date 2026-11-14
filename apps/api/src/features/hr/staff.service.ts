@@ -7,6 +7,7 @@ import {
   STAFF_SORT_FIELDS,
   StaffListQuerySchema,
   UpdateStaffRequestSchema,
+  parseWeeklyOff,
 } from '@erp/contracts';
 import type { DepartmentOption, Staff, StaffCandidate, StaffListResponse } from '@erp/contracts';
 import { Prisma } from '@prisma/client';
@@ -55,7 +56,10 @@ function toDto(row: Row): Staff {
     joinDate: isoDate(row.joinDate),
     leftOn: row.leftOn ? isoDate(row.leftOn) : null,
     status: row.status,
+    salaryType: row.salaryType === 'DAILY' ? 'DAILY' : 'FIXED',
     monthlySalary: row.monthlySalary.toFixed(2),
+    dailyRate: row.dailyRate?.toFixed(2) ?? null,
+    weeklyOffDays: row.weeklyOffDays === null ? null : parseWeeklyOff(row.weeklyOffDays),
     createdAt: row.createdAt.toISOString(),
     rowVersion: row.rowVersion,
   };
@@ -173,7 +177,9 @@ export class StaffService {
           department: input.department,
           designation: input.designation,
           joinDate: parseIsoDate(input.joinDate),
-          monthlySalary: input.monthlySalary,
+          salaryType: input.salaryType,
+          monthlySalary: input.salaryType === 'DAILY' ? '0' : (input.monthlySalary ?? '0'),
+          dailyRate: input.salaryType === 'DAILY' ? (input.dailyRate ?? null) : null,
           status: 'ACTIVE',
           createdBy: auth.userId,
           updatedBy: auth.userId,
@@ -189,7 +195,9 @@ export class StaffService {
           employeeCode: input.employeeCode,
           department: input.department,
           joinDate: input.joinDate,
-          monthlySalary: input.monthlySalary,
+          salaryType: input.salaryType,
+          monthlySalary: input.monthlySalary ?? '0',
+          dailyRate: input.dailyRate ?? null,
         },
       });
       return this.present(tx, auth, row.id);
@@ -205,13 +213,32 @@ export class StaffService {
         await this.assertCodeFree(tx, input.employeeCode, id);
       }
       if (input.department !== undefined) await this.assertDepartment(tx, input.department);
+      // The kind of salary and its amount go together: a monthly salary for a fixed salary, a daily rate for pay by the day.
+      const type = input.salaryType ?? (current.salaryType === 'DAILY' ? 'DAILY' : 'FIXED');
+      if (input.salaryType === undefined) {
+        if (type === 'FIXED' && input.dailyRate !== undefined)
+          throw new ValidationFailedError('This person is paid a fixed salary', [
+            { field: 'dailyRate', message: 'Change their kind of salary to pay by the day first' },
+          ]);
+        if (type === 'DAILY' && input.monthlySalary !== undefined)
+          throw new ValidationFailedError('This person is paid by the day', [
+            {
+              field: 'monthlySalary',
+              message: 'Change their kind of salary to a fixed salary first',
+            },
+          ]);
+      }
       const next = await tx.staff.update({
         where: { id },
         data: {
           ...(input.employeeCode !== undefined ? { employeeCode: input.employeeCode } : {}),
           ...(input.department !== undefined ? { department: input.department } : {}),
           ...(input.designation !== undefined ? { designation: input.designation } : {}),
-          ...(input.monthlySalary !== undefined ? { monthlySalary: input.monthlySalary } : {}),
+          salaryType: type,
+          monthlySalary:
+            type === 'DAILY' ? '0' : (input.monthlySalary ?? current.monthlySalary.toFixed(2)),
+          dailyRate:
+            type === 'DAILY' ? (input.dailyRate ?? current.dailyRate?.toFixed(2) ?? null) : null,
           updatedBy: auth.userId,
         },
       });
@@ -224,13 +251,17 @@ export class StaffService {
           employeeCode: current.employeeCode,
           department: current.department,
           designation: current.designation,
+          salaryType: current.salaryType,
           monthlySalary: current.monthlySalary.toFixed(2),
+          dailyRate: current.dailyRate?.toFixed(2) ?? null,
         },
         newValue: {
           employeeCode: next.employeeCode,
           department: next.department,
           designation: next.designation,
+          salaryType: next.salaryType,
           monthlySalary: next.monthlySalary.toFixed(2),
+          dailyRate: next.dailyRate?.toFixed(2) ?? null,
         },
       });
       return this.present(tx, auth, id);

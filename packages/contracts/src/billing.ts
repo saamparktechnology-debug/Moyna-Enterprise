@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GstRateValueSchema, HsnCodeValueSchema } from './items.js';
 import { DateOnlySchema } from './battery-dates.js';
 import { paginatedSchema, PaginationQuerySchema } from './pagination.js';
 
@@ -36,6 +37,13 @@ export const InvoiceLineInputSchema = z
     discountAmount: MoneyAmountSchema.default('0.00'),
     /** Required for an item that is tracked by serial number, and only for such an item. */
     serialUnitId: z.uuid().optional(),
+    /**
+     * The GST rate for this line on a GST invoice, chosen by the biller. Left out, the item's own rate is the starting
+     * point; `null` means none. The type of the invoice, not the product, decides whether GST is charged at all.
+     */
+    taxRate: GstRateValueSchema.nullable().optional(),
+    /** The HSN code for this line on a GST invoice. Left out, the item's own code is used; `null` means none. */
+    hsnCode: HsnCodeValueSchema.nullable().optional(),
   })
   .superRefine((line, context) => {
     if (line.serialUnitId && line.qty !== 1)
@@ -46,6 +54,20 @@ export const InvoiceLineInputSchema = z
       });
   });
 export type InvoiceLineInput = z.input<typeof InvoiceLineInputSchema>;
+
+/** The business's details as printed at the top of every invoice, credit note and receipt. */
+export const DocumentCompanySchema = z.object({
+  name: z.string(),
+  /** For example "Prop - Balaram Das Gajendra Mahapatra" is printed from this name. */
+  proprietor: z.string().nullable(),
+  address: z.string().nullable(),
+  phone: z.string().nullable(),
+  gstin: z.string().nullable(),
+  tagline: z.string().nullable(),
+  /** The line printed at the foot of an invoice, such as "Goods once sold will not take back." */
+  terms: z.string().nullable(),
+});
+export type DocumentCompany = z.infer<typeof DocumentCompanySchema>;
 
 export const INVOICE_COMMISSION_TYPES = ['NONE', 'FIXED', 'GIFT'] as const;
 export const InvoiceCommissionTypeSchema = z.enum(INVOICE_COMMISSION_TYPES);
@@ -224,7 +246,12 @@ export const InvoiceSchema = z.object({
   customerId: z.string(),
   customerName: z.string(),
   customerGstin: z.string().nullable(),
+  /** The buyer's mobile number and address, as printed on the invoice. */
+  customerPhone: z.string().nullable().optional(),
+  customerAddress: z.string().nullable().optional(),
   branchGstin: z.string().nullable(),
+  /** The business's details for printing. Sent when one invoice is opened, not in lists. */
+  company: DocumentCompanySchema.nullable().optional(),
   brokerId: z.string().nullable(),
   brokerName: z.string().nullable(),
   /** What was agreed with the broker for this sale; `null` when nothing was agreed on the invoice. */
@@ -247,6 +274,8 @@ export const InvoiceSchema = z.object({
   issuedOn: z.string().nullable(),
   dueDate: z.string().nullable(),
   ...TotalsShape,
+  /** The total in capital letters, as printed under the table: ONE LAKH FIFTY EIGHT THOUSAND ONLY. */
+  totalInWords: z.string().optional(),
   lines: z.array(InvoiceLineSchema),
   /** Profit on an issued invoice for this viewer (see `InvoiceLine.unitCost`). `null` when it cannot be worked out. */
   profit: z.string().nullable().optional(),

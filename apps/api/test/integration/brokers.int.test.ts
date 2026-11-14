@@ -395,7 +395,7 @@ describe('brokers and commission', () => {
       expect(done).toMatchObject({ status: 'ISSUED', brokerName: broker.name });
     });
 
-    it('refuses an unknown broker, a switched-off broker and a broker with no rule', async () => {
+    it('refuses an unknown broker and a switched-off broker', async () => {
       const customerId = await newCustomer();
       const unknown = await staffA.post(
         '/invoices',
@@ -403,15 +403,18 @@ describe('brokers and commission', () => {
       );
       expect(unknown.status).toBe(400);
       expect(unknown.body.details[0].field).toBe('brokerId');
-      const bare = await newBroker(null);
-      const noRule = await staffA.post('/invoices', await draftBody(customerId, '10', 1, bare.id));
-      expect(noRule.status).toBe(400);
-      expect(noRule.body.details[0].message).toContain('no commission rule');
       const off = await newBroker();
       await adminA.patch(`/brokers/${off.id}`, { isActive: false, rowVersion: off.rowVersion });
       const inactive = await staffA.post('/invoices', await draftBody(customerId, '10', 1, off.id));
       expect(inactive.status).toBe(400);
       expect(inactive.body.details[0].message).toContain('no longer active');
+    });
+
+    it('lets a broker with no standing rule go on an invoice, and pays no commission unless one is agreed', async () => {
+      const bare = await newBroker(null);
+      const invoice = await issued('1000', 1, bare.id);
+      expect(invoice.brokerId).toBe(bare.id);
+      expect(await commissionOf(invoice.id)).toBeUndefined();
     });
 
     it('freezes the broker once the invoice is issued, even for the database', async () => {

@@ -64,7 +64,6 @@ function Failed({ error, retry }: { error: unknown; retry: () => void }) {
 }
 
 function CompanyView({ data, onOpen }: { data: CompanyDashboard; onOpen: (id: string) => void }) {
-  const salesTotal = Number(data.sales.sales);
   const collected = Number(data.sales.collected);
   const outstanding = Number(data.dues.outstanding);
   const overdue = Number(data.dues.overdue);

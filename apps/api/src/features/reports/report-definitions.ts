@@ -504,6 +504,42 @@ export const REPORTS: ReportDefinition[] = [
       JOIN items i ON i.id = coalesce(rl.item_id, tl.item_id)
       WHERE d.type IN ('SHORT', 'DAMAGED') AND ${within(day('d.created_at'), ctx)} ${inBranch('d.branch_id', ctx)}`,
   },
+  {
+    code: 'SALES_BY_CATEGORY_BROKER',
+    title: 'Sales by category and broker',
+    description:
+      'For each group and product category: which broker sold how many items, and for how much (before GST). Items returned on an approved credit note are taken off. Sales with no broker are shown as "No broker".',
+    columns: [
+      text('group', 'Group'),
+      text('category', 'Product category'),
+      text('broker', 'Broker'),
+      int('units', 'Items sold'),
+      int('invoices', 'Invoices'),
+      money('taxable', 'Sale value (before GST)'),
+    ],
+    usesPeriod: true,
+    needs: 'invoices.view',
+    defaultSort: { key: 'units', order: 'desc' },
+    base: (ctx) => Prisma.sql`
+      SELECT coalesce(g.name, c.name) AS "group", c.name AS "category", coalesce(br.name, 'No broker') AS "broker",
+             (sum(il.qty - coalesce(cr.qty, 0)))::int AS "units",
+             count(DISTINCT i.id)::int AS "invoices",
+             sum(il.taxable_amount - coalesce(cr.taxable, 0)) AS "taxable"
+      FROM invoice_lines il
+      JOIN invoices i ON i.id = il.invoice_id
+      JOIN items it ON it.id = il.item_id
+      JOIN item_categories c ON c.id = it.category_id
+      LEFT JOIN item_categories g ON g.id = c.parent_id
+      LEFT JOIN brokers br ON br.id = i.broker_id
+      LEFT JOIN LATERAL (
+        SELECT sum(cl.qty)::int AS qty, sum(cl.taxable_amount) AS taxable
+        FROM credit_note_lines cl
+        JOIN credit_notes cn ON cn.id = cl.credit_note_id
+        WHERE cl.invoice_line_id = il.id AND cn.status = 'APPROVED'
+      ) cr ON true
+      WHERE i.status = 'ISSUED' AND ${within(Prisma.sql`i.issued_on`, ctx)} ${inBranch('i.branch_id', ctx)}
+      GROUP BY coalesce(g.name, c.name), c.name, coalesce(br.name, 'No broker')`,
+  },
 ];
 
 export const REPORT_BY_CODE = new Map<string, ReportDefinition>(

@@ -1,6 +1,8 @@
 //apps/web/src/features/items/use-items.ts
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  CreateHsnRequest,
+  UpdateHsnRequest,
   AddBarcodeRequest,
   CreateItemCategoryRequest,
   CreateItemRequest,
@@ -12,19 +14,22 @@ import {
   addBarcode,
   buildLabels,
   createCategory,
+  createHsn,
   createItem,
   listCategories,
   listGstRates,
   listItems,
+  listManagedHsn,
   listUnits,
   lookupItem,
   removeBarcode,
   searchHsn,
   setItemActive,
   updateCategory,
+  updateHsn,
   updateItem,
 } from './items-api';
-import type { ItemListParams } from './items-api';
+import type { ItemListParams, ManagedHsnParams } from './items-api';
 
 const ITEMS_KEY = 'items';
 const CATEGORIES_KEY = 'item-categories';
@@ -112,6 +117,30 @@ export function useCategoryMutations() {
     update: useMutation({
       mutationFn: ({ id, values }: { id: string; values: UpdateItemCategoryRequest }) =>
         updateCategory(id, values),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+const HSN_KEY = 'hsn-managed';
+export const useManagedHsn = (params: ManagedHsnParams) =>
+  useQuery({
+    queryKey: [HSN_KEY, params],
+    queryFn: () => listManagedHsn(params),
+    placeholderData: keepPreviousData,
+  });
+export function useHsnMutations() {
+  const queryClient = useQueryClient();
+  // The suggestions on the item form read from the same list, so they are refreshed too.
+  const refresh = () => queryClient.invalidateQueries();
+  return {
+    create: useMutation({
+      mutationFn: (values: CreateHsnRequest) => createHsn(values),
+      onSuccess: refresh,
+    }),
+    update: useMutation({
+      mutationFn: ({ code, values }: { code: string; values: UpdateHsnRequest }) =>
+        updateHsn(code, values),
       onSuccess: refresh,
     }),
   };
