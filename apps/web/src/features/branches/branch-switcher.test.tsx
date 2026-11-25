@@ -111,7 +111,7 @@ describe('branch switcher', () => {
     await screen.findByText(/System healthy/);
     await openUserMenu();
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
-    await screen.findByRole('heading', { name: 'Sign in to ERP' });
+    await screen.findByRole('heading', { name: 'Welcome back' });
     expect(calls.find((call) => call.key === 'POST /api/auth/logout')?.headers['x-branch-id']).toBe(
       BRANCH_A.id,
     );

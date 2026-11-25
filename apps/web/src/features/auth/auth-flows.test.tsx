@@ -28,7 +28,7 @@ describe('guarded routes', () => {
     routeFetch(signedOut());
     renderApp('/inventory');
 
-    expect(await screen.findByRole('heading', { name: 'Sign in to ERP' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
     expect(screen.queryByText(/session ended/)).not.toBeInTheDocument();
   });
@@ -99,7 +99,7 @@ describe('signing in', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid username or password');
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
-    expect(screen.getByRole('heading', { name: 'Sign in to ERP' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
   it('shows the lockout message from the server', async () => {
@@ -212,7 +212,7 @@ describe('session expiry and sign-out', () => {
 
     await queryClient.refetchQueries({ queryKey: ['health'] }).catch(() => undefined);
 
-    expect(await screen.findByRole('heading', { name: 'Sign in to ERP' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
     expect(screen.getByText(/session ended/)).toBeInTheDocument();
   });
 
@@ -228,7 +228,7 @@ describe('session expiry and sign-out', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Sign in to ERP' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument(),
     );
     expect(screen.queryByText(/session ended/)).not.toBeInTheDocument();
     expect(calls.find((call) => call.key === 'POST /api/auth/logout')?.headers).toMatchObject({
@@ -248,7 +248,7 @@ describe('session expiry and sign-out', () => {
     await openUserMenu();
     await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Sign in to ERP' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument(),
     );
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
   });

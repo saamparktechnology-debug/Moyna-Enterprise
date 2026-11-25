@@ -59,6 +59,22 @@
   --sidebar-width: 15rem;
   --sidebar-width-collapsed: 3.75rem;
 
+  /* Sign-in page (split layout with the dealership hero) */
+  --login-hero-bg: #050b1e;
+  --login-hero-title: #ffffff;
+  --login-hero-sub: #4f86f2;
+  --login-hero-tagline: rgb(255 255 255 / 0.27);
+  --login-panel: #f6f9f8;
+  --login-badge: #e8edf6;
+  --login-badge-dot: #4ab686;
+  --login-heading: #21273c;
+  --login-button: #1549c9;
+  --login-button-hover: #113bab;
+  --login-field-border: #d6dbe6;
+  --login-field-focus: #3b6fe0;
+  --login-logo-from: #2fd0c0;
+  --login-logo-to: #2a5ee0;
+
   /* Shape, depth and motion */
   --radius: 0.5rem;
   --radius-sm: 0.25rem;

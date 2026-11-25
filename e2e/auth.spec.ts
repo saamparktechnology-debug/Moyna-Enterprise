@@ -7,7 +7,7 @@ test.describe('authentication', () => {
   }) => {
     await page.goto('/inventory');
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByRole('heading', { name: 'Sign in to ERP' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 
     await signIn(page);
 
